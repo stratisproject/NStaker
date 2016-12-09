@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using StratisMinter.Handlers;
 
 namespace StratisMinter
 {
@@ -14,5 +15,42 @@ namespace StratisMinter
 				throw ex;
 			}
 		}
+
+	    public static void Lock(this LockObject obj, Func<bool> condition, Action action)
+	    {
+		    DoubleLock.Lock(ref obj, condition, action);
+	    }
+    }
+
+	public class DoubleLock
+	{
+		private object lockItem;
+		private Func<bool> condition;
+		private Action action;
+
+		public static DoubleLock Lock(ref LockObject lockItem, Func<bool> condition, Action action)
+		{
+			return new DoubleLock { action = action, lockItem = lockItem, condition = condition }.LockInner();
+		}
+
+		public DoubleLock LockInner()
+		{
+			if (this.condition())
+			{
+				lock (this.lockItem)
+				{
+					if (this.condition())
+					{
+						this.action();
+					}
+				}
+			}
+
+			return this;
+		}
+	}
+
+	public class LockObject
+	{
 	}
 }

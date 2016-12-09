@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using nStratis;
 using nStratis.BitcoinCore;
 using nStratis.Protocol;
@@ -50,15 +52,18 @@ namespace StratisMinter.Handlers
 		}
 	}
 
-	public class ChainHandler
+	public class ChainHandler : Handler
 	{
 		private readonly Context context;
-	    public ChainIndex ChainIndex { get; }
+		private readonly CommunicationHandler comHandler;
 
-		public ChainHandler(Context context)
+		public ChainIndex ChainIndex { get; }
+
+		public ChainHandler(Context context, CommunicationHandler comHandler)
 		{
 			this.context = context;
 			this.ChainIndex = this.context.ChainIndex;
+			this.comHandler = comHandler;
 		}
 
 		public ChainHandler LoadHeaders()
@@ -77,44 +82,10 @@ namespace StratisMinter.Handlers
 			// add each block index to memory for fast lookup
 			this.ChainIndex.Load(this.context);
 
-			// doanload all block headers up to current tip
-			// this will loop until complete using a new node
-			// if the current node got disconnected 
-			while (true)
-			{
-				try
-				{
-					// if we have trusted nodes use one of those, else
-					// select a random address from the address manager
-					// then try to synchrnoize blockchin headers
-					var endpoint = this.context.Config.TrustedNodes?.Any() ?? false ? this.context.Config.TrustedNodes.First() : this.context.AddressManager.Select().Endpoint;
-					var node = Node.Connect(this.context.Network, endpoint);
-					node.VersionHandshake(null, context.CancellationToken);
-					node.SynchronizeChain(ChainIndex, null, context.CancellationToken);
-					break;
-				}
-				catch (OperationCanceledException tokenCanceledException)
-				{
-					tokenCanceledException.CancellationToken.ThrowIfCancellationRequested();
-				}
-				catch (ProtocolException)
-				{
-					// continue to try with another node
-				}
-				catch (Exception ex)
-				{
-					// try another node
-					ex.ThrowIfCritical();
-				}
-			}
+			// sync the headers and save to disk
+			this.SyncChain(true);
 
-			// update file
-			using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
-			{
-				ChainIndex.WriteTo(file);
-			}
-
-			// register a behaviour, the ChainBehavior maintaines 
+			// register a behaviour, the ChainBehavior maintains 
 			// the chain of headers in sync with the network
 			var behaviour = new ChainBehavior(ChainIndex);
 			this.context.ConnectionParameters.TemplateBehaviors.Add(behaviour);
@@ -122,5 +93,51 @@ namespace StratisMinter.Handlers
 			return this;
 		}
 
+		public void SyncChain(bool saveToDisk = false)
+		{
+			// download all block headers up to current tip
+			// this will loop until complete using a new node
+			// if the current node got disconnected 
+			var node = this.comHandler.GetNode();
+			node.SynchronizeChain(ChainIndex, null, context.CancellationToken);
+
+			if(saveToDisk)
+				this.SaveChainToDisk();
+		}
+
+		private LockObject saveLock = new LockObject();
+		private long savedHeight = 0;
+
+		// this method is thread safe
+		// it should be called periodically by a behaviour  
+		// that is in charge of keeping the chin in sync
+		public void SaveChainToDisk()
+		{
+			saveLock.Lock(() => this.ChainIndex.Tip.Height > savedHeight, () =>
+				{
+					using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
+					{
+						this.ChainIndex.WriteTo(file);
+					}
+
+					this.savedHeight = this.ChainIndex.Tip.Height;
+				});
+
+			//if (this.ChainIndex.Tip.Height > savedHeight)
+			//{
+			//	lock (saveLock)
+			//	{
+			//		if (this.ChainIndex.Tip.Height > savedHeight)
+			//		{
+			//			using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
+			//			{
+			//				this.ChainIndex.WriteTo(file);
+			//			}
+
+			//			this.savedHeight = this.ChainIndex.Tip.Height;
+			//		}
+			//	}
+			//}
+		}
 	}
 }

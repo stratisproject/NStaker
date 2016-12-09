@@ -15,19 +15,23 @@ namespace StratisMinter.Handlers
 		}
 	}
 		
-    public class BlockHandler
-    {
+    public class BlockHandler : Handler
+	{
 		private readonly Context context;
-	    private readonly BlockDownloader downloader;
-	    private readonly ChainIndex chainIndex;
+		private readonly CommunicationHandler comHandler;
+		private readonly BlockDownloader downloader;
+		private readonly ChainHandler chainHandler;
+		private readonly ChainIndex chainIndex;
 	    private ChainedBlock currentBlock;
 		private uint256 askBlockId;
 
-		public BlockHandler(Context context)
+		public BlockHandler(Context context, CommunicationHandler comHandler, ChainHandler chainHandler)
 		{
 			this.context = context;
-			this.downloader = new BlockDownloader(context);
+			this.comHandler = comHandler;
 			this.chainIndex = context.ChainIndex;
+			this.chainHandler = chainHandler;
+			this.downloader = new BlockDownloader(context, this.comHandler);
 		}
 
 		// this method will block until the whole blockchain is downloaded
@@ -36,20 +40,31 @@ namespace StratisMinter.Handlers
 		// listen to Inv block messages and append them to the chain
 		public void DownloadChain()
 		{
+			this.SyncBlockchain();
+
+			// in the time it took to sync the chain
+			// the tip may have progressed further so at
+			// this point sync the headers and the blocks again 
+			this.chainHandler.SyncChain();
+			this.SyncBlockchain();
+		}
+
+		private void SyncBlockchain()
+		{
 			// find the last downloaded block
-			// we only continue the syn from this point
+			// we only continue the sync from this point
 			// note we can consider triggering the IBD also to 
-			// catch up in case the coonnection was dropped
+			// catch up in case the connection was dropped
 			this.currentBlock = this.chainIndex.FindLastIndexedBlock();
 
-			// are we bellow the cuttent tip
+			// are we bellow the current tip
 			var currentChain = this.chainIndex.GetBlock(this.currentBlock.HashBlock);
 			if(this.chainIndex.Height == currentChain.Height)
 				return;
 
 			this.downloader.Deplete();
 			askBlockId = currentBlock.HashBlock;
-			var blockCountToAsk = 50;
+			var blockCountToAsk = 100;
 
 			while (true)
 			{
@@ -60,7 +75,8 @@ namespace StratisMinter.Handlers
 					askBlockId = askMore.LastOrDefault()?.HashBlock;
 					if (askMore.Any())
 					{
-						this.downloader.AskBlocks(askMore.Select(s => s.HashBlock).ToArray());
+						// ask the downloader for next x blocks
+						this.downloader.AskBlocks(askMore.Select(s => s.HashBlock));
 					}
 				}
 
@@ -68,17 +84,17 @@ namespace StratisMinter.Handlers
 				if (next == null)
 					return;
 
-				// ask the downloader for next x blocks
+				// get the next block to validate
 				var nextBlock = this.downloader.GetBlock(next.HashBlock);
 				if (nextBlock != null)
 				{
-					// foreach block validate it
+					// for each block validate it
 					if (!nextBlock.Check())
 						throw new InvalidBlockException();
 
 					//BlockValidator.CheckBlock()
 
-					// add the block to the index
+					// add the block to the chain index
 					this.chainIndex.AddBlock(nextBlock);
 					this.context.Counter.SetBlockCount(next.Height);
 					this.context.Counter.AddBlocksCount(1);

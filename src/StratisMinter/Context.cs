@@ -13,6 +13,26 @@ using StratisMinter.Handlers;
 
 namespace StratisMinter
 {
+	public abstract class Handler
+	{
+		
+	}
+
+	public class HanldlerCollection
+	{
+		private readonly List<Handler> handlers = new List<Handler>();
+
+		public T OfType<T>()
+		{
+			return handlers.OfType<T>().FirstOrDefault();
+		}
+
+		public void Add(Handler handler)
+		{
+			this.handlers.Add(handler);
+		}
+	}
+
 	public class Context
 	{
 		public static Context Create(Network network, Config config)
@@ -25,7 +45,8 @@ namespace StratisMinter
 				CancellationTokenSource = cancellationTokenSource,
 				ConnectionParameters = new NodeConnectionParameters(),
 				ChainIndex = new ChainIndex(),
-				Counter = new PerformanceCounter()
+				Counter = new PerformanceCounter(),
+				Hanldlers = new HanldlerCollection()
 			};
 
 			// override the connection cancelation token
@@ -41,8 +62,8 @@ namespace StratisMinter
 		public CancellationTokenSource CancellationTokenSource { get; private set; }
 		public NodeConnectionParameters ConnectionParameters { get; private set; }
 		public ChainIndex ChainIndex { get; private set; }
-
 		public PerformanceCounter Counter { get; private set; }
+		public HanldlerCollection Hanldlers { get; private set; }
 
 		public override string ToString()
 		{

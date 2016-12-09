@@ -1,4 +1,4 @@
-﻿{
+{
   "version": "1.0.0-*",
   "buildOptions": {
     "emitEntryPoint": true
@@ -9,7 +9,7 @@
       "type": "platform",
       "version": "1.0.0"
     },
-    "nStratis": "3.0.0.4"
+    "nStratis": "3.0.0.5"
   },
 
   "frameworks": {

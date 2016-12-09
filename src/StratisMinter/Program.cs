@@ -12,12 +12,14 @@ namespace StratisMinter
     {
         public static void Main(string[] args)
 		{
+			//185.64.104.55
+
 			var conf = new Config
 	        {
 		        FolderLocation = AppContext.BaseDirectory,
-		        TrustedNodes = new List<IPEndPoint> {new IPEndPoint(IPAddress.Parse("127.0.0.1"), Network.Main.DefaultPort)}
-	        };
-			var miner = new Minter();
+		        TrustedNodes = new List<IPEndPoint> {new IPEndPoint(IPAddress.Parse("127.0.0.1"), Network.Main.DefaultPort) } //185.64.104.55 - 127.0.0.1
+			};
+			var miner = new Staker();
 			miner.Run(conf);
 
         }
