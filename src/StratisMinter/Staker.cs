@@ -2,69 +2,79 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol.Behaviors;
-using StratisMinter.Handlers;
+using StratisMinter.Services;
 
 namespace StratisMinter
 {
-    public class Staker
+    public class Staker: IDisposable
     {
 	    private Context context;
-	    private BlockHandler blockHandler;
-		private ChainHandler chainHandler;
-		private ConnectionHandler connectionHandler;
-		private DownloadHandler downloadHandler;
+	    private IServiceProvider services;
 
-		private void CreateHandlers()
+		private void BuildServices()
 	    {
-			this.connectionHandler = new ConnectionHandler(this.context);
-			this.chainHandler = new ChainHandler(this.context, this.connectionHandler);
-			this.downloadHandler = new DownloadHandler(context, this.connectionHandler, this.chainHandler);
-			this.blockHandler = new BlockHandler(this.context, this.connectionHandler, this.downloadHandler, this.chainHandler);
-			
-			// add the handlers to the handler collection
-			// this will allow to abstract away the functionality 
-			// in handlers for example when terminating each handler 
-			// will be called to manage its own termination work
-			context.Hanldlers.Add(this.connectionHandler);
-			context.Hanldlers.Add(this.blockHandler);
-			context.Hanldlers.Add(this.chainHandler);
-			context.Hanldlers.Add(this.downloadHandler);
+			//setup our DI
+			this.services = new ServiceCollection()
+				.AddLogging()
+				.AddSingleton(this.context).AddSingleton<ITerminate, Context>()
+				.AddSingleton<NodeConnectionService>().AddSingleton<ITerminate, NodeConnectionService>()
+				.AddSingleton<ChainSyncService>().AddSingleton<ITerminate, ChainSyncService>()
+				.AddSingleton<DownloadManager>().AddSingleton<ITerminate, DownloadManager>()
+				.AddSingleton<BlockSyncService>()
+				.AddSingleton<Logger>()
+				.BuildServiceProvider();
+
+		    this.context.Service = services;
+
+			//configure console logging
+			this.services
+				.GetService<ILoggerFactory>()
+				.AddConsole(LogLevel.Information);
 		}
 
 		public void Run(Config config)
 	    {
 			// create the context
 			this.context = Context.Create(Network.Main, config);
-			this.CreateHandlers();
-			this.connectionHandler.CreateBehaviours();
+			this.BuildServices();
 
-			Logger.Create(context).Run();
+			this.services.GetService<Logger>().Run();
+
+			this.services.GetService<NodeConnectionService>().CreateBehaviours();
 
 			// load network addresses from file or from network
 			this.context.LoadAddressManager();
 
 			// load headers
-			this.chainHandler.LoadHeaders();
+			this.services.GetService<ChainSyncService>().LoadHeaders();
 			
 			// sync the blockchain
-			this.downloadHandler.DownloadOrCatchup();
+			this.services.GetService<BlockSyncService>().DownloadOrCatchup();
 
 			// connect to some nodes 
-			this.connectionHandler.StartConnecting();
+			this.services.GetService<NodeConnectionService>().StartConnecting();
 
 			// start mining 
-			this.blockHandler.Stake();
+			this.services.GetService<BlockSyncService>().Stake();
 
 			this.context.CancellationTokenSource.CancelAfter(TimeSpan.FromDays(1));
 		    while (!this.context.CancellationTokenSource.IsCancellationRequested)
 		    {
 				this.context.CancellationTokenSource.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
 			}
-
-			// call every handler to dispose itself
-			this.connectionHandler.Dispose();
+			
+			this.Dispose();
 	    }
+
+		public void Dispose()
+		{
+			// call every service to dispose itself
+			foreach (var terminate in this.services.GetServices<ITerminate>())
+				terminate.OnStop();
+		}
 	}
 }

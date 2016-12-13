@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
+﻿using System.IO;
 using nStratis;
 using nStratis.BitcoinCore;
-using nStratis.Protocol;
-using nStratis.Protocol.Behaviors;
 
-namespace StratisMinter.Handlers
+namespace StratisMinter.Services
 {
 
 	public class ChainIndex : ConcurrentChain
@@ -56,21 +50,21 @@ namespace StratisMinter.Handlers
 		}
 	}
 
-	public class ChainHandler : Handler
+	public class ChainSyncService : ITerminate
 	{
 		private readonly Context context;
-		private readonly ConnectionHandler connectionHandler;
+		private readonly NodeConnectionService nodeConnectionService;
 
 		public ChainIndex ChainIndex { get; }
 
-		public ChainHandler(Context context, ConnectionHandler connectionHandler)
+		public ChainSyncService(Context context, NodeConnectionService nodeConnectionService)
 		{
 			this.context = context;
 			this.ChainIndex = this.context.ChainIndex;
-			this.connectionHandler = connectionHandler;
+			this.nodeConnectionService = nodeConnectionService;
 		}
 
-		public ChainHandler LoadHeaders()
+		public ChainSyncService LoadHeaders()
 		{
 			// load headers form file (or genesis)
 			if (File.Exists(this.context.Config.File("headers.dat")))
@@ -91,7 +85,7 @@ namespace StratisMinter.Handlers
 			this.SyncChain(true);
 
 			// enable sync on the behaviours 
-			this.connectionHandler.EnableHeaderSyncing();
+			this.nodeConnectionService.EnableHeaderSyncing();
 
 			return this;
 		}
@@ -101,7 +95,7 @@ namespace StratisMinter.Handlers
 			// download all block headers up to current tip
 			// this will loop until complete using a new node
 			// if the current node got disconnected 
-			var node = this.connectionHandler.GetNode(true);
+			var node = this.nodeConnectionService.GetNode(true);
 			node.SynchronizeChain(ChainIndex, null, context.CancellationToken);
 
 			if(saveToDisk)
@@ -125,22 +119,14 @@ namespace StratisMinter.Handlers
 
 					this.savedHeight = this.ChainIndex.Tip.Height;
 				});
+		}
 
-			//if (this.ChainIndex.Tip.Height > savedHeight)
-			//{
-			//	lock (saveLock)
-			//	{
-			//		if (this.ChainIndex.Tip.Height > savedHeight)
-			//		{
-			//			using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
-			//			{
-			//				this.ChainIndex.WriteTo(file);
-			//			}
+		public void OnStop()
+		{
+			// stop the syncing behaviour
 
-			//			this.savedHeight = this.ChainIndex.Tip.Height;
-			//		}
-			//	}
-			//}
+			// save the current header chain to disk
+			this.SaveChainToDisk();
 		}
 	}
 }

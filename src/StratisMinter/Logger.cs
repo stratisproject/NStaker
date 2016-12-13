@@ -2,22 +2,20 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace StratisMinter
 {
     public class Logger
     {
 		private readonly Context context;
+		private readonly ILogger logger;
 
-		public Logger(Context context)
+		public Logger(Context context, ILoggerFactory loggerFactory)
 		{
 			this.context = context;
+			this.logger = loggerFactory.CreateLogger<Staker>();
 		}
-
-	    public static Logger Create(Context context)
-	    {
-		    return new Logger(context);
-	    }
 
 	    public Task Run()
 	    {
@@ -25,8 +23,7 @@ namespace StratisMinter
 		    {
 			    while (!this.context.CancellationToken.IsCancellationRequested)
 			    {
-					Console.WriteLine();
-					Console.Write(this.context.ToString());
+					this.logger.LogInformation(this.context.ToString());
 				    this.context.CancellationToken.WaitHandle.WaitOne(10000);
 			    }
 

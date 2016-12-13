@@ -9,36 +9,38 @@ using System.Threading.Tasks;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
-using StratisMinter.Handlers;
+using StratisMinter.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace StratisMinter
 {
-	public abstract class Handler
+	/// <summary>
+	/// A interface represents finishing work
+	/// </summary>
+	public interface ITerminate
 	{
-		
+		// this method is in charge clean up operations 
+		// like storing to disk or finish long running tasks
+		void OnStop();
 	}
 
-	public class HanldlerCollection
+	/// <summary>
+	/// A interface represents IIntitiate work
+	/// </summary>
+	public interface IIntitiate
 	{
-		private readonly List<Handler> handlers = new List<Handler>();
-
-		public T OfType<T>()
-		{
-			return handlers.OfType<T>().FirstOrDefault();
-		}
-
-		public void Add(Handler handler)
-		{
-			this.handlers.Add(handler);
-		}
+		// this method is in charge starting up operations 
+		// like long running tasks
+		void OnStart();
 	}
 
-	public class Context
+
+	public class Context : ITerminate
 	{
 		public static Context Create(Network network, Config config)
 		{
 			var cancellationTokenSource = new CancellationTokenSource();
-			var context = new Context
+			var context = new Context()
 			{
 				Network = network,
 				Config = config,
@@ -46,7 +48,6 @@ namespace StratisMinter
 				ConnectionParameters = new NodeConnectionParameters(),
 				ChainIndex = new ChainIndex(),
 				Counter = new PerformanceCounter(),
-				Hanldlers = new HanldlerCollection()
 			};
 
 			// override the connection cancelation token
@@ -63,7 +64,7 @@ namespace StratisMinter
 		public NodeConnectionParameters ConnectionParameters { get; private set; }
 		public ChainIndex ChainIndex { get; private set; }
 		public PerformanceCounter Counter { get; private set; }
-		public HanldlerCollection Hanldlers { get; private set; }
+		public IServiceProvider Service { get; set; }
 
 		public override string ToString()
 		{
@@ -71,13 +72,20 @@ namespace StratisMinter
 			builder.AppendLine("==== Perf ====");
 			builder.AppendLine($"Elapsed = \t\t {Counter.Elapsed:c}");
 			builder.AppendLine($"CurrentBlock = \t\t {Counter.BlockCount}");
-			builder.AppendLine($"PendingBlocks = \t {Counter.PendingBlocks}");
+			builder.AppendLine($"PendingBlocks = \t\t {Counter.PendingBlocks}");
 			builder.AppendLine($"Blocks = \t\t {(Counter.Elapsed.TotalMilliseconds/Counter.BlockCount):0.0000} ms/block");
 			builder.AppendLine("==== Stats ====");
-			builder.AppendLine($"ConnectedNodes = \t {this.Hanldlers.OfType<ConnectionHandler>().NodesGroup.ConnectedNodes.Count}");
+			builder.AppendLine($"ConnectedNodes = \t\t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
 			builder.AppendLine($"HeaderTip = \t\t {this.ChainIndex?.Tip?.Height}");
 			builder.AppendLine($"IndexedBlock = \t\t {this.ChainIndex?.LastIndexedBlock?.Height}");
 			return builder.ToString();
+		}
+
+	
+
+		public void OnStop()
+		{
+			this.AddressManager.SavePeerFile(this.Config.File("peers.dat"), this.Network);
 		}
 
 		public void LoadAddressManager()

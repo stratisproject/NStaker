@@ -1,13 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Threading.Tasks;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
 
-namespace StratisMinter.Handlers
+namespace StratisMinter.Services
 {
 	public class NoConnectedNodesException : Exception
 	{
@@ -20,7 +17,7 @@ namespace StratisMinter.Handlers
 		}
 	}
 
-	public class ConnectionHandler : Handler
+	public class NodeConnectionService : ITerminate
 	{
 		private readonly Context context;
 
@@ -31,7 +28,7 @@ namespace StratisMinter.Handlers
 		// of notifying the parent (NodesGroup) when the node got disconnected 
 		public NodesGroup NodesGroup { get; }
 
-		public ConnectionHandler(Context context)
+		public NodeConnectionService(Context context)
 		{
 			this.context = context;
 			this.NodesGroup = new NodesGroup(this.context.Network);
@@ -40,12 +37,12 @@ namespace StratisMinter.Handlers
 			this.NodesGroup.MaximumNodeConnection = this.context.Config.MaximumNodeConnection;
 		}
 
-		public void Dispose()
+		public void OnStop()
 		{
 			this.NodesGroup.Disconnect();
 		}
 
-		public ConnectionHandler CreateBehaviours()
+		public NodeConnectionService CreateBehaviours()
 		{
 			// register a behaviour, the ChainBehavior maintains 
 			// the chain of headers in sync with the network

@@ -7,21 +7,21 @@ using System.Threading.Tasks;
 using nStratis;
 using nStratis.Protocol;
 
-namespace StratisMinter.Handlers
+namespace StratisMinter.Services
 {
 	public class BlockFetcher
 	{
-		private readonly DownloadHandler downloadHandler;
+		private readonly DownloadManager downloadManager;
 		private readonly Node node;
 		private readonly Context context;
 		private readonly BlockingCollection<uint256> askCollection;
 		private readonly CancellationTokenSource cancellation;
 		private Task runningTask;
 
-		public BlockFetcher(Context context, DownloadHandler downloadHandler, Node node)
+		public BlockFetcher(Context context, DownloadManager downloadManager, Node node)
 		{
 			this.context = context;
-			this.downloadHandler = downloadHandler;
+			this.downloadManager = downloadManager;
 			this.node = node;
 			node.StateChanged += NodeOnStateChanged;
 
@@ -61,7 +61,7 @@ namespace StratisMinter.Handlers
 						// this will block until new items are added or cancelation is called
 						foreach (var block in node.GetBlocks(this.EnumerateItems(), this.cancellation.Token))
 						{
-							this.downloadHandler.PushBlock(block);
+							this.downloadManager.PushBlock(block);
 						}
 					}
 				}
@@ -84,7 +84,7 @@ namespace StratisMinter.Handlers
 		public void Kill()
 		{
 			Node nodeInner;
-			this.downloadHandler.Fetchers.TryRemove(this,out nodeInner);
+			this.downloadManager.Fetchers.TryRemove(this,out nodeInner);
 			this.cancellation.Cancel();
 			this.askCollection.Dispose();
 		}
@@ -98,22 +98,22 @@ namespace StratisMinter.Handlers
 		}
 	}
 
-	public class DownloadHandler : Handler
+	public class DownloadManager : ITerminate
 	{
 		private readonly Context context;
-		private readonly ConnectionHandler connectionHandler;
+		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ChainIndex chainIndex;
-		private readonly ChainHandler chainHandler;
+		private readonly ChainSyncService chainSyncService;
 
 		public ConcurrentDictionary<BlockFetcher, Node> Fetchers { get; }
 		public ConcurrentDictionary<uint256, Block> ReceivedBlocks { get; }
 
-		public DownloadHandler(Context context, ConnectionHandler connectionHandler, ChainHandler chainHandler)
+		public DownloadManager(Context context, NodeConnectionService nodeConnectionService, ChainSyncService chainSyncService)
 		{
 			this.context = context;
-			this.connectionHandler = connectionHandler;
+			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
-			this.chainHandler = chainHandler;
+			this.chainSyncService = chainSyncService;
 			this.ReceivedBlocks = new ConcurrentDictionary<uint256, Block>();
 			this.Fetchers = new ConcurrentDictionary<BlockFetcher, Node>();
 		}
@@ -131,7 +131,7 @@ namespace StratisMinter.Handlers
 			this.Fetchers.Clear();
 		}
 
-		public void Dispose()
+		public void OnStop()
 		{
 			foreach (var fetcher in Fetchers)
 				fetcher.Key.Kill();
@@ -158,28 +158,13 @@ namespace StratisMinter.Handlers
 
 		private BlockFetcher CreateFetcher()
 		{
-			var node = this.connectionHandler.GetNode(true);
+			var node = this.nodeConnectionService.GetNode(true);
 			var fetcher = new BlockFetcher(this.context, this, node).Processes();
 			this.Fetchers.TryAdd(fetcher, node);
 			return fetcher;
 		}
 
-		// this method will block until the whole blockchain is downloaded
-		// that's called the IBD (Initial Block Download) processes
-		// once the block is synced there will be a node behaviour that will 
-		// listen to Inv block messages and append them to the chain
-		public void DownloadOrCatchup()
-		{
-			this.SyncBlockchain();
-
-			// in the time it took to sync the chain
-			// the tip may have progressed further so at
-			// this point sync the headers and the blocks again 
-			this.chainHandler.SyncChain();
-			this.SyncBlockchain();
-		}
-
-		private void SyncBlockchain()
+		public void SyncBlockchain()
 		{
 			// find the last downloaded block
 			// we only continue the sync from this point
@@ -198,14 +183,14 @@ namespace StratisMinter.Handlers
 
 			while (true)
 			{
-				// check how many blocks are waiting in the downloadHandler 
+				// check how many blocks are waiting in the downloadManager 
 				if (askBlockId != null && this.DownloadedBlocks < blockCountToAsk)
 				{
 					var askMore = this.chainIndex.EnumerateAfter(askBlockId).Take(blockCountToAsk).ToArray();
 					askBlockId = askMore.LastOrDefault()?.HashBlock;
 					if (askMore.Any())
 					{
-						// ask the downloadHandler for next x blocks
+						// ask the downloadManager for next x blocks
 						this.AskBlocks(askMore.Select(s => s.HashBlock));
 					}
 				}
