@@ -16,12 +16,15 @@ namespace StratisMinter.Handlers
 		private BlockStore store;
 		private IndexedBlockStore indexStore;
 
+		public ChainedBlock LastIndexedBlock { get; private set; }
+
 		public void Load(Context context)
 		{
 			// todo: create a repository that persists index data to file
 			this.store = new BlockStore(context.Config.FolderLocation, context.Network);
 			this.indexStore = new IndexedBlockStore(new InMemoryNoSqlRepository(), store);
 			this.indexStore.ReIndex();
+			this.LastIndexedBlock = this.FindLastIndexedBlock();
 		}
 
 		public void AddBlock(Block block)
@@ -30,6 +33,7 @@ namespace StratisMinter.Handlers
 			var header = this.GetBlock(block.GetHash());
 			header.Header.PosParameters = block.Header.PosParameters;
 			this.indexStore.Put(block);
+			this.LastIndexedBlock = header;
 		}
 
 		public Block GetFullBlock(uint256 blockId)
@@ -37,7 +41,7 @@ namespace StratisMinter.Handlers
 			return this.indexStore.Get(blockId);
 		}
 
-		public ChainedBlock FindLastIndexedBlock()
+		private ChainedBlock FindLastIndexedBlock()
 		{
 			var current = this.Tip;
 
@@ -55,15 +59,15 @@ namespace StratisMinter.Handlers
 	public class ChainHandler : Handler
 	{
 		private readonly Context context;
-		private readonly CommunicationHandler comHandler;
+		private readonly ConnectionHandler connectionHandler;
 
 		public ChainIndex ChainIndex { get; }
 
-		public ChainHandler(Context context, CommunicationHandler comHandler)
+		public ChainHandler(Context context, ConnectionHandler connectionHandler)
 		{
 			this.context = context;
 			this.ChainIndex = this.context.ChainIndex;
-			this.comHandler = comHandler;
+			this.connectionHandler = connectionHandler;
 		}
 
 		public ChainHandler LoadHeaders()
@@ -82,13 +86,12 @@ namespace StratisMinter.Handlers
 			// add each block index to memory for fast lookup
 			this.ChainIndex.Load(this.context);
 
+
 			// sync the headers and save to disk
 			this.SyncChain(true);
 
-			// register a behaviour, the ChainBehavior maintains 
-			// the chain of headers in sync with the network
-			var behaviour = new ChainBehavior(ChainIndex);
-			this.context.ConnectionParameters.TemplateBehaviors.Add(behaviour);
+			// enable sync on the behaviours 
+			this.connectionHandler.EnableHeaderSyncing();
 
 			return this;
 		}
@@ -98,7 +101,7 @@ namespace StratisMinter.Handlers
 			// download all block headers up to current tip
 			// this will loop until complete using a new node
 			// if the current node got disconnected 
-			var node = this.comHandler.GetNode();
+			var node = this.connectionHandler.GetNode(true);
 			node.SynchronizeChain(ChainIndex, null, context.CancellationToken);
 
 			if(saveToDisk)

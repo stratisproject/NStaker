@@ -68,11 +68,15 @@ namespace StratisMinter
 		public override string ToString()
 		{
 			StringBuilder builder = new StringBuilder();
-			builder.AppendLine("==== Stats ====");
+			builder.AppendLine("==== Perf ====");
 			builder.AppendLine($"Elapsed = \t\t {Counter.Elapsed:c}");
 			builder.AppendLine($"CurrentBlock = \t\t {Counter.BlockCount}");
 			builder.AppendLine($"PendingBlocks = \t {Counter.PendingBlocks}");
 			builder.AppendLine($"Blocks = \t\t {(Counter.Elapsed.TotalMilliseconds/Counter.BlockCount):0.0000} ms/block");
+			builder.AppendLine("==== Stats ====");
+			builder.AppendLine($"ConnectedNodes = \t {this.Hanldlers.OfType<ConnectionHandler>().NodesGroup.ConnectedNodes.Count}");
+			builder.AppendLine($"HeaderTip = \t\t {this.ChainIndex?.Tip?.Height}");
+			builder.AppendLine($"IndexedBlock = \t\t {this.ChainIndex?.LastIndexedBlock?.Height}");
 			return builder.ToString();
 		}
 

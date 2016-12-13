@@ -49,6 +49,13 @@ namespace StratisMinter
 		}
 		private long blocksCount;
 		public long BlocksCount => blocksCount;
+
+		public void SetConnectedNodes(long count)
+		{
+			Interlocked.Exchange(ref connectedNodes, count);
+		}
+		private long connectedNodes;
+		public long ConnectedNodes => connectedNodes;
 	}
 
 }

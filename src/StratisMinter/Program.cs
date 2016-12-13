@@ -17,6 +17,7 @@ namespace StratisMinter
 			var conf = new Config
 	        {
 		        FolderLocation = AppContext.BaseDirectory,
+				MaximumNodeConnection = 8,
 		        TrustedNodes = new List<IPEndPoint> {new IPEndPoint(IPAddress.Parse("127.0.0.1"), Network.Main.DefaultPort) } //185.64.104.55 - 127.0.0.1
 			};
 			var miner = new Staker();
