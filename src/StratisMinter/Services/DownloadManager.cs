@@ -209,7 +209,9 @@ namespace StratisMinter.Services
 					if (!nextBlock.Check())
 						throw new InvalidBlockException();
 
-					//BlockValidator.CheckBlock()
+					// validate the block
+					if (!this.chainIndex.ValidaBlock(nextBlock))
+						throw new InvalidBlockException();
 
 					// add the block to the chain index
 					this.chainIndex.AddBlock(nextBlock);

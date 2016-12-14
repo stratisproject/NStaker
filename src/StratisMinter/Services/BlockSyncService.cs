@@ -21,7 +21,8 @@ namespace StratisMinter.Services
 		private readonly ChainSyncService chainSyncService;
 		private readonly ChainIndex chainIndex;
 
-		public BlockSyncService(Context context, NodeConnectionService nodeConnectionService, DownloadManager downloadManager, ChainSyncService chainSyncService)
+		public BlockSyncService(Context context, NodeConnectionService nodeConnectionService, 
+			DownloadManager downloadManager, ChainSyncService chainSyncService)
 		{
 			this.context = context;
 			this.nodeConnectionService = nodeConnectionService;
@@ -48,6 +49,8 @@ namespace StratisMinter.Services
 			// this point sync the headers and the blocks again 
 			this.chainSyncService.SyncChain();
 			this.downloadManager.SyncBlockchain();
+
+			this.chainSyncService.Save();
 		}
 	}
 }
