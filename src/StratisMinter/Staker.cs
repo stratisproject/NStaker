@@ -20,10 +20,10 @@ namespace StratisMinter
 			//setup our DI
 			this.services = new ServiceCollection()
 				.AddLogging()
-				.AddSingleton(this.context).AddSingleton<ITerminate, Context>()
-				.AddSingleton<NodeConnectionService>().AddSingleton<ITerminate, NodeConnectionService>()
-				.AddSingleton<ChainSyncService>().AddSingleton<ITerminate, ChainSyncService>()
-				.AddSingleton<DownloadManager>().AddSingleton<ITerminate, DownloadManager>()
+				.AddSingleton(this.context).AddSingleton<IStopable, Context>()
+				.AddSingleton<NodeConnectionService>().AddSingleton<IStopable, NodeConnectionService>()
+				.AddSingleton<ChainSyncService>().AddSingleton<IStopable, ChainSyncService>()
+				.AddSingleton<DownloadManager>().AddSingleton<IStopable, DownloadManager>()
 				.AddSingleton<BlockSyncService>()
 				.AddSingleton<Logger>()
 				.BuildServiceProvider();
@@ -42,8 +42,6 @@ namespace StratisMinter
 			this.context = Context.Create(Network.Main, config);
 			this.BuildServices();
 
-			this.services.GetService<Logger>().Run();
-
 			this.services.GetService<NodeConnectionService>().CreateBehaviours();
 
 			// load network addresses from file or from network
@@ -51,7 +49,9 @@ namespace StratisMinter
 
 			// load headers
 			this.services.GetService<ChainSyncService>().LoadHeaders();
-			
+
+			this.services.GetService<Logger>().Run();
+
 			// sync the blockchain
 			this.services.GetService<BlockSyncService>().DownloadOrCatchup();
 
@@ -73,7 +73,7 @@ namespace StratisMinter
 		public void Dispose()
 		{
 			// call every service to dispose itself
-			foreach (var terminate in this.services.GetServices<ITerminate>())
+			foreach (var terminate in this.services.GetServices<IStopable>())
 				terminate.OnStop();
 		}
 	}

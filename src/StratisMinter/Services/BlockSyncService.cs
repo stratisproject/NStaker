@@ -50,7 +50,10 @@ namespace StratisMinter.Services
 			this.chainSyncService.SyncChain();
 			this.downloadManager.SyncBlockchain();
 
-			this.chainSyncService.Save();
+			// the chin and trx index may have chanced
+			// update the disk files
+			this.chainSyncService.SaveToDisk();
+			this.chainIndex.TransactionIndex.SaveToDisk();
 		}
 	}
 }

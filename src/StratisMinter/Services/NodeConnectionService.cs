@@ -17,7 +17,7 @@ namespace StratisMinter.Services
 		}
 	}
 
-	public class NodeConnectionService : ITerminate
+	public class NodeConnectionService : IStopable
 	{
 		private readonly Context context;
 

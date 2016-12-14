@@ -98,7 +98,7 @@ namespace StratisMinter.Services
 		}
 	}
 
-	public class DownloadManager : ITerminate
+	public class DownloadManager : IStopable
 	{
 		private readonly Context context;
 		private readonly NodeConnectionService nodeConnectionService;
@@ -210,7 +210,7 @@ namespace StratisMinter.Services
 						throw new InvalidBlockException();
 
 					// validate the block
-					if (!this.chainIndex.ValidaBlock(nextBlock))
+					if (!this.chainIndex.ValidateBlock(nextBlock))
 						throw new InvalidBlockException();
 
 					// add the block to the chain index

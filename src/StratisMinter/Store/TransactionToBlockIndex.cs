@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using nStratis;
+using StratisMinter.Services;
 
 namespace StratisMinter.Store
 {
@@ -98,7 +99,7 @@ namespace StratisMinter.Store
 		}
 	}
 
-	public class TransactionToBlockItemIndex : PersistableItemIndex<uint256.MutableUint256, uint256.MutableUint256>
+	public class TransactionToBlockItemIndex : PersistableItemIndex<uint256.MutableUint256, uint256.MutableUint256>, IDiskStore
 	{
 		private readonly Context context;
 
@@ -132,11 +133,34 @@ namespace StratisMinter.Store
 			}
 		}
 
-		public void Save()
+		public void SaveToDisk()
 		{
 			using (var file = File.OpenWrite(this.context.Config.File("trxindex.dat")))
 			{
 				this.WriteTo(file);
+			}
+		}
+
+		private readonly object lockerObj = new object();
+
+		public void ReIndex(ChainIndex chainIndex)
+		{
+			lock (lockerObj)
+			{
+				// bring transaction indexes to the same level 
+				// as the indexed blocks, in case of a bad shutdown
+				while (chainIndex.LastIndexedBlock.HashBlock != this.LastBlockId)
+				{
+					var findblock = chainIndex.GetBlock(this.LastBlockId ?? chainIndex.Genesis.HashBlock);
+					var next = chainIndex.GetBlock(findblock.Height + 1);
+					if (next == null)
+						break;
+					var block = chainIndex.GetFullBlock(next.HashBlock);
+					if (block == null)
+						break;
+					foreach (var trx in block.Transactions)
+						this.TryAdd(trx.GetHash().AsBitcoinSerializable(), block.GetHash().AsBitcoinSerializable());
+				}
 			}
 		}
 	}

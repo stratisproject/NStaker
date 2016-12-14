@@ -14,28 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace StratisMinter
 {
-	/// <summary>
-	/// A interface represents finishing work
-	/// </summary>
-	public interface ITerminate
-	{
-		// this method is in charge clean up operations 
-		// like storing to disk or finish long running tasks
-		void OnStop();
-	}
-
-	/// <summary>
-	/// A interface represents IIntitiate work
-	/// </summary>
-	public interface IIntitiate
-	{
-		// this method is in charge starting up operations 
-		// like long running tasks
-		void OnStart();
-	}
-
-
-	public class Context : ITerminate
+	public class Context : IStopable
 	{
 		public static Context Create(Network network, Config config)
 		{
