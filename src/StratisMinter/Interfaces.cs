@@ -8,7 +8,7 @@ namespace StratisMinter
 	/// <summary>
 	/// A interface represents finishing work
 	/// </summary>
-	public interface IStopable
+	public interface IStoppable
 	{
 		// this method is in charge clean up operations 
 		// like storing to disk or finish long running tasks
@@ -19,7 +19,7 @@ namespace StratisMinter
 	/// A interface represents IStartable work
 	/// </summary>
 	public interface IStartable
-	{
+	{ 
 		// this method is in charge starting up operations 
 		// like long running tasks
 		void OnStart();

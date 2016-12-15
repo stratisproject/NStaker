@@ -12,7 +12,7 @@ namespace StratisMinter
 
 	    public int MaximumNodeConnection { get; set; } = 8;
 
-		public int IBDFromTrustedSource { get; set; }
+	    public int MaxBlocksInMemory { get; set; } = 20000;
 
 		// use the specified ip to download the blockchain from
 		// in cases where we know a trusted node we can specify it here

@@ -98,7 +98,7 @@ namespace StratisMinter.Services
 		}
 	}
 
-	public class DownloadManager : IStopable
+	public class DownloadManager : IStoppable
 	{
 		private readonly Context context;
 		private readonly NodeConnectionService nodeConnectionService;
@@ -180,6 +180,7 @@ namespace StratisMinter.Services
 			this.Deplete();
 			var askBlockId = currentBlock.HashBlock;
 			var blockCountToAsk = 100;
+			var saveIndex = 0;
 
 			while (true)
 			{
@@ -220,6 +221,15 @@ namespace StratisMinter.Services
 
 					// update current block
 					currentBlock = next;
+					saveIndex++;
+
+					if (saveIndex == 10000)
+					{
+						// persist to disk the trx and pos params
+						this.chainIndex.TransactionIndex.SaveToDisk();
+						this.chainSyncService.SaveToDisk();
+						saveIndex = 0;
+					}
 				}
 				else
 				{

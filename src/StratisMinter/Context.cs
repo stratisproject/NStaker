@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace StratisMinter
 {
-	public class Context : IStopable
+	public class Context : IStoppable
 	{
 		public static Context Create(Network network, Config config)
 		{
@@ -52,7 +52,7 @@ namespace StratisMinter
 			builder.AppendLine($"Elapsed = \t\t {Counter.Elapsed:c}");
 			builder.AppendLine($"CurrentBlock = \t\t {Counter.BlockCount}");
 			builder.AppendLine($"PendingBlocks = \t\t {Counter.PendingBlocks}");
-			builder.AppendLine($"Blocks = \t\t {(Counter.Elapsed.TotalMilliseconds/Counter.BlockCount):0.0000} ms/block");
+			builder.AppendLine($"Blocks = \t\t\t {(Counter.Elapsed.TotalMilliseconds/Counter.BlockCount):0.0000} ms/block");
 			builder.AppendLine("==== Stats ====");
 			builder.AppendLine($"ConnectedNodes = \t\t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
 			builder.AppendLine($"HeaderTip = \t\t {this.ChainIndex?.Tip?.Height}");

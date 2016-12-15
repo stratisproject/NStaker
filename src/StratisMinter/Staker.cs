@@ -20,10 +20,10 @@ namespace StratisMinter
 			//setup our DI
 			this.services = new ServiceCollection()
 				.AddLogging()
-				.AddSingleton(this.context).AddSingleton<IStopable, Context>()
-				.AddSingleton<NodeConnectionService>().AddSingleton<IStopable, NodeConnectionService>()
-				.AddSingleton<ChainSyncService>().AddSingleton<IStopable, ChainSyncService>()
-				.AddSingleton<DownloadManager>().AddSingleton<IStopable, DownloadManager>()
+				.AddSingleton(this.context).AddSingleton<IStoppable, Context>()
+				.AddSingleton<NodeConnectionService>().AddSingleton<IStoppable, NodeConnectionService>()
+				.AddSingleton<ChainSyncService>().AddSingleton<IStoppable, ChainSyncService>()
+				.AddSingleton<DownloadManager>().AddSingleton<IStoppable, DownloadManager>()
 				.AddSingleton<BlockSyncService>()
 				.AddSingleton<Logger>()
 				.BuildServiceProvider();
@@ -73,7 +73,7 @@ namespace StratisMinter
 		public void Dispose()
 		{
 			// call every service to dispose itself
-			foreach (var terminate in this.services.GetServices<IStopable>())
+			foreach (var terminate in this.services.GetServices<IStoppable>())
 				terminate.OnStop();
 		}
 	}

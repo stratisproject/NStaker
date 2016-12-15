@@ -8,99 +8,10 @@ using StratisMinter.Services;
 
 namespace StratisMinter.Store
 {
-	public class PersistableItem<TKey, TValue> : IBitcoinSerializable 
-		where TKey : IBitcoinSerializable 
-		where TValue : IBitcoinSerializable
+	public class TransactionToBlockItemIndex :  IDiskStore
 	{
-		public TKey Key;
-		public TValue Value;
-		public void ReadWrite(BitcoinStream stream)
-		{
-			stream.ReadWrite(ref Key);
-			stream.ReadWrite(ref Value);
-		}
-	}
-
-	public abstract class PersistableItemIndex<TKey, TValue> : PersistableItem<TKey, TValue> 
-		where TKey : IBitcoinSerializable 
-		where TValue : IBitcoinSerializable
-	{
-	    protected readonly Dictionary<TKey, PersistableItem<TKey, TValue>> Table;
-
-		protected PersistableItemIndex()
-		{
-			this.Table = new Dictionary<TKey, PersistableItem<TKey, TValue>>(); ;
-		}
-
-		public virtual bool TryAdd(TKey key, TValue value)
-		{
-			lock (locker)
-			{
-				return this.Table.TryAdd(key, new PersistableItem<TKey, TValue>() {Key = key, Value = value});
-			}
-		}
-
-		public virtual TValue Find(TKey key)
-		{
-			PersistableItem<TKey, TValue> ret;
-			this.Table.TryGetValue(key, out ret);
-			if (ret != null) return ret.Value;
-			return default(TValue);
-		}
-
-		protected void Load(byte[] chain)
-		{
-			Load(new MemoryStream(chain));
-		}
-
-		protected void Load(Stream stream)
-		{
-			Load(new BitcoinStream(stream, false));
-		}
-
-		private readonly object locker = new object();
-
-		protected void Load(BitcoinStream stream)
-		{
-			lock (locker)
-			{
-				try
-				{
-					this.Table.Clear();
-
-					while (true)
-					{
-						PersistableItem<TKey, TValue> item = null;
-						stream.ReadWrite<PersistableItem<TKey, TValue>>(ref item);
-						this.Table.TryAdd(item.Key, item);
-					}
-				}
-				catch (EndOfStreamException)
-				{
-				}
-			}
-		}
-
-		protected void WriteTo(Stream stream)
-		{
-			WriteTo(new BitcoinStream(stream, true));
-		}
-
-		protected void WriteTo(BitcoinStream stream)
-		{
-			lock (locker)
-			{
-				foreach (var persistableItem in this.Table)
-				{
-					var item = persistableItem.Value;
-					stream.ReadWrite(ref item);
-				}
-			}
-		}
-	}
-
-	public class TransactionToBlockItemIndex : PersistableItemIndex<uint256.MutableUint256, uint256.MutableUint256>, IDiskStore
-	{
+		protected readonly Dictionary<uint256, uint256> Table;
+		protected readonly object LockObj = new object();
 		private readonly Context context;
 
 		public uint256 LastBlockId { get; private set; }
@@ -108,44 +19,97 @@ namespace StratisMinter.Store
 		public TransactionToBlockItemIndex(Context context)
 		{
 			this.context = context;
+			this.Table = new Dictionary<uint256, uint256>(); ;
 		}
 
-		public override bool TryAdd(uint256.MutableUint256 key, uint256.MutableUint256 value)
+		public uint256 Find(uint256 trxid)
 		{
-			if (base.TryAdd(key, value))
-			{
-				if (this.LastBlockId != value.Value)
-					this.LastBlockId = value.Value;
-			}
+			uint256 blockid;
+			this.Table.TryGetValue(trxid, out blockid);
+			return blockid;
+		}
 
-			return false;
+		public void Add(Block block)
+		{
+			lock (LockObj)
+			{
+				bool added = false;
+				var blockHash = block.GetHash();
+				foreach (var transaction in block.Transactions)
+					added = this.Table.TryAdd(transaction.GetHash(), blockHash);
+
+				if (added)
+				{
+					if (this.LastBlockId != blockHash)
+						this.LastBlockId = blockHash;
+				}
+			}
+		}
+
+		public void Save()
+		{
+			lock (LockObj)
+			{
+				using (var file = File.OpenWrite(this.context.Config.File("trxindex.dat")) )
+				{
+					var stream = new BitcoinStream(file, true);
+						
+					foreach (var persistableItem in this.Table)
+					{
+						stream.ReadWrite(persistableItem.Key.AsBitcoinSerializable());
+						stream.ReadWrite(persistableItem.Value.AsBitcoinSerializable());
+					}
+				}
+			}
 		}
 
 		public void Load()
 		{
 			if (File.Exists(this.context.Config.File("trxindex.dat")))
 			{
-				this.Load(File.ReadAllBytes(this.context.Config.File("trxindex.dat")));
-				if (this.Table.Any())
+				lock (LockObj)
 				{
-					this.LastBlockId = this.Table.Last().Value.Value.Value;
+					if(Table.Any())
+						return;
+
+					var bytes = File.ReadAllBytes(this.context.Config.File("trxindex.dat"));
+					using (var mem = new MemoryStream(bytes))
+					{
+						var stream = new BitcoinStream(mem, false);
+
+						try
+						{
+							this.Table.Clear();
+							while (true)
+							{
+								uint256.MutableUint256 key = null;
+								uint256.MutableUint256 value = null;
+								stream.ReadWrite(ref key);
+								stream.ReadWrite(ref value);
+								this.Table.TryAdd(key.Value, value.Value);
+							}
+						}
+						catch (EndOfStreamException)
+						{
+						}
+					}
+
+					if (this.Table.Any())
+					{
+						this.LastBlockId = this.Table.Last().Value;
+					}
 				}
 			}
 		}
 
 		public void SaveToDisk()
 		{
-			using (var file = File.OpenWrite(this.context.Config.File("trxindex.dat")))
-			{
-				this.WriteTo(file);
-			}
+			this.Save();
 		}
-
-		private readonly object lockerObj = new object();
 
 		public void ReIndex(ChainIndex chainIndex)
 		{
-			lock (lockerObj)
+			lock (LockObj)
 			{
 				// bring transaction indexes to the same level 
 				// as the indexed blocks, in case of a bad shutdown
@@ -158,8 +122,7 @@ namespace StratisMinter.Store
 					var block = chainIndex.GetFullBlock(next.HashBlock);
 					if (block == null)
 						break;
-					foreach (var trx in block.Transactions)
-						this.TryAdd(trx.GetHash().AsBitcoinSerializable(), block.GetHash().AsBitcoinSerializable());
+					this.Add(block);
 				}
 			}
 		}

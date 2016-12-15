@@ -15,6 +15,7 @@ namespace StratisMinter.Services
 	{
 		private BlockStore store;
 		private IndexedBlockStore indexStore;
+		private BlockMemoryStore blockMemoryStore;
 
 		public TransactionToBlockItemIndex TransactionIndex { get; private set; }
 		public ChainedBlock LastIndexedBlock { get; private set; }
@@ -25,6 +26,7 @@ namespace StratisMinter.Services
 			this.store = new BlockStore(context.Config.FolderLocation, context.Network);
 			this.indexStore = new IndexedBlockStore(new InMemoryNoSqlRepository(), store);
 			this.TransactionIndex = new TransactionToBlockItemIndex(context);
+			this.blockMemoryStore = new BlockMemoryStore(context);
 		}
 
 		public void ReIndexStore()
@@ -59,7 +61,7 @@ namespace StratisMinter.Services
 
 			if (!block.Header.PosParameters.IsSet())
 			{
-				block.SetPosParams();
+				chainedBlock.Header.PosParameters = block.SetPosParams();
 			}
 
 			return nStratis.temp.BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
@@ -73,14 +75,14 @@ namespace StratisMinter.Services
 				throw new InvalidBlockException("POS params must be set");
 			
 			this.indexStore.Put(block);
+			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
 			this.LastIndexedBlock = chainedBlock;
-			foreach (var trx in block.Transactions)
-				this.TransactionIndex.TryAdd(trx.GetHash().AsBitcoinSerializable(), block.GetHash().AsBitcoinSerializable());
+			this.TransactionIndex.Add(block);
 		}
 
 		public Block GetFullBlock(uint256 blockId)
 		{
-			return this.indexStore.Get(blockId);
+			return this.blockMemoryStore.Get(blockId, () => this.indexStore.Get(blockId));
 		}
 
 		private ChainedBlock FindLastIndexedBlock()
@@ -104,7 +106,7 @@ namespace StratisMinter.Services
 
 		public uint256 GetBlockHash(uint256 trxHash)
 		{
-			return this.TransactionIndex.Find(trxHash.AsBitcoinSerializable()).Value;
+			return this.TransactionIndex.Find(trxHash);
 		}
 
 		public Task<Transaction> GetAsync(uint256 txId)
@@ -120,7 +122,7 @@ namespace StratisMinter.Services
 		}
 	}
 
-	public class ChainSyncService : IStopable, IDiskStore
+	public class ChainSyncService : IStoppable, IDiskStore
 	{
 		private readonly Context context;
 		private readonly NodeConnectionService nodeConnectionService;
