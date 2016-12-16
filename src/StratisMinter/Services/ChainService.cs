@@ -5,7 +5,7 @@ using StratisMinter.Store;
 
 namespace StratisMinter.Services
 {
-	public class ChainService : IDiskStore
+	public class ChainService 
 	{
 		private readonly Context context;
 		private readonly NodeConnectionService nodeConnectionService;
@@ -36,9 +36,9 @@ namespace StratisMinter.Services
 		// this method is thread safe
 		// it should be called periodically by a behaviour  
 		// that is in charge of keeping the chin in sync
-		public void SaveToDisk()
+		public void SaveToDisk(bool force = false)
 		{
-			saveLock.Lock(() => this.ChainIndex.Tip.Height > savedHeight, () =>
+			saveLock.Lock(() => force || this.ChainIndex.Tip.Height > savedHeight, () =>
 			{
 				using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
 				{
@@ -48,5 +48,6 @@ namespace StratisMinter.Services
 				this.savedHeight = this.ChainIndex.Tip.Height;
 			});
 		}
+
 	}
 }

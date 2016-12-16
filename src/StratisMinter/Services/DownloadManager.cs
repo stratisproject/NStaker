@@ -271,7 +271,7 @@ namespace StratisMinter.Services
 						// the pos params are being modified as 
 						// blocks are received and recalculating the pos
 						// params is a more expensive operation then saving to disk 
-						this.chainSyncService.SaveToDisk();
+						this.chainSyncService.SaveToDisk(true);
 						saveIndex = 0;
 					}
 				}
