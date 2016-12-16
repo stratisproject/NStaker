@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -12,15 +13,15 @@ namespace StratisMinter.Store
 	/// </summary>
 	public class BlockMemoryStore
 	{
-		private readonly Dictionary<uint256, Block> table;
-		private readonly Queue<uint256> queue;
+		private readonly ConcurrentDictionary<uint256, Block> table;
+		private readonly ConcurrentQueue<uint256> queue;
 		private readonly Context context;
 
 		public BlockMemoryStore(Context context)
 		{
 			this.context = context;
-			this.table = new Dictionary<uint256, Block>();
-			this.queue = new Queue<uint256>();
+			this.table = new ConcurrentDictionary<uint256, Block>();
+			this.queue = new ConcurrentQueue<uint256>();
 		}
 
 		public Block Get(uint256 blockid, Func<Block> func)
@@ -34,11 +35,12 @@ namespace StratisMinter.Store
 			block = func();
 			if (block != null)
 			{
-				if (this.table.Count > this.context.Config.MaxBlocksInMemory)
-					this.RemoveOne();
-
-				if (this.table.TryAdd(blockid, block))
-					this.queue.Enqueue(blockid);
+				// ideally keep the latest blocks in memory those are most likely 
+				// to be hit, so if we are in IBD mode don't add to memory
+				if (!this.context.DownloadMode)
+				{
+					this.Add(block, blockid);
+				}
 			}
 
 			return block;
@@ -55,8 +57,9 @@ namespace StratisMinter.Store
 
 		private void RemoveOne()
 		{
-			var remove = this.queue.Dequeue();
-			this.table.Remove(remove);
+			uint256 blockid; Block block;
+			if (this.queue.TryDequeue(out blockid))
+				this.table.TryRemove(blockid, out block);
 		}
 	}
 }

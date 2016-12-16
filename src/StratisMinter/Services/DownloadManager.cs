@@ -124,17 +124,13 @@ namespace StratisMinter.Services
 		{
 			this.ReceivedBlocks.TryAdd(block.GetHash(), block);
 		}
-
-		private void Deplete()
-		{
-			this.ReceivedBlocks.Clear();
-			this.Fetchers.Clear();
-		}
-
+		
 		public void OnStop()
 		{
-			foreach (var fetcher in Fetchers)
+			this.ReceivedBlocks.Clear();
+			foreach (var fetcher in this.Fetchers)
 				fetcher.Key.Kill();
+			this.Fetchers.Clear();
 		}
 
 		private void AskBlocks(IEnumerable<uint256> downloadRequests)
@@ -177,7 +173,7 @@ namespace StratisMinter.Services
 			if (this.chainIndex.Height == currentChain.Height)
 				return;
 
-			this.Deplete();
+			this.OnStop();
 			var askBlockId = currentBlock.HashBlock;
 			var blockCountToAsk = 100;
 			var saveIndex = 0;
@@ -198,7 +194,7 @@ namespace StratisMinter.Services
 
 				var next = this.chainIndex.GetBlock(currentBlock.Height + 1);
 				if (next == null)
-					return;
+					break;
 
 				// get the next block to validate
 				var nextBlock = this.GetBlock(next.HashBlock);
@@ -210,12 +206,10 @@ namespace StratisMinter.Services
 					if (!nextBlock.Check())
 						throw new InvalidBlockException();
 
-					// validate the block
-					if (!this.chainIndex.ValidateBlock(nextBlock))
+					// validate and add the block to the chain index
+					if(!this.chainIndex.ValidateAndAddBlock(nextBlock))
 						throw new InvalidBlockException();
 
-					// add the block to the chain index
-					this.chainIndex.AddBlock(nextBlock);
 					this.context.Counter.SetBlockCount(next.Height);
 					this.context.Counter.AddBlocksCount(1);
 
@@ -223,10 +217,12 @@ namespace StratisMinter.Services
 					currentBlock = next;
 					saveIndex++;
 
-					if (saveIndex == 10000)
+					if (saveIndex == 5000)
 					{
-						// persist to disk the trx and pos params
-						this.chainIndex.TransactionIndex.SaveToDisk();
+						// persist any headers to disk 
+						// the pos params are being modified as 
+						// blocks are received and recalculating the pos
+						// params is a more expensive operation then saving to disk 
 						this.chainSyncService.SaveToDisk();
 						saveIndex = 0;
 					}
@@ -237,6 +233,8 @@ namespace StratisMinter.Services
 					this.context.CancellationToken.WaitHandle.WaitOne(1000);
 				}
 			}
+
+			this.OnStop();
 		}
 	}
 }

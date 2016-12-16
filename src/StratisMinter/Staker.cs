@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol.Behaviors;
+using StratisMinter.Behaviour;
 using StratisMinter.Services;
 
 namespace StratisMinter
@@ -36,16 +37,34 @@ namespace StratisMinter
 				.AddConsole(LogLevel.Information);
 		}
 
+	    private void CreateBehaviours()
+	    {
+			// register a behaviour, the ChainBehavior maintains 
+			// the chain of headers in sync with the network
+			// before we loaded the headers don't sync the chain
+			var chainBehavior = new ChainBehavior(this.context.ChainIndex) { CanSync = false };
+			this.context.ConnectionParameters.TemplateBehaviors.Add(chainBehavior);
+
+			var blockSyncBehaviour = new BlockSyncBehaviour(this.services.GetService<BlockSyncService>().BlockSyncHub)
+			{
+				CanRespondToBlockPayload = false,
+				CanRespondToGetBlocksPayload = false
+			};
+			this.context.ConnectionParameters.TemplateBehaviors.Add(blockSyncBehaviour);
+		}
+
 		public void Run(Config config)
 	    {
+			// todo: this entire processes will be replaced with LoadModuls and WorkTasks
+
 			// create the context
 			this.context = Context.Create(Network.Main, config);
 			this.BuildServices();
-
-			this.services.GetService<NodeConnectionService>().CreateBehaviours();
-
+			
 			// load network addresses from file or from network
 			this.context.LoadAddressManager();
+
+			this.CreateBehaviours();
 
 			// load headers
 			this.services.GetService<ChainSyncService>().LoadHeaders();
@@ -57,6 +76,11 @@ namespace StratisMinter
 
 			// connect to some nodes 
 			this.services.GetService<NodeConnectionService>().StartConnecting();
+
+			// enable sync on the behaviours 
+			this.services.GetService<NodeConnectionService>().EnableSyncing();
+
+			this.services.GetService<BlockSyncService>().StartReceiving();
 
 			// start mining 
 			this.services.GetService<BlockSyncService>().Stake();

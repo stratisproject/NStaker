@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using nStratis;
@@ -6,6 +7,7 @@ using nStratis.BitcoinCore;
 using StratisMinter.Store;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using nStratis.Protocol.Behaviors;
 
 namespace StratisMinter.Services
 {
@@ -40,44 +42,59 @@ namespace StratisMinter.Services
 			// ensure chain headers POS params are at the 
 			// same level of the chain index
 			var pindex = this.Tip;
+			var stack = new Stack<ChainedBlock>();
 			while (pindex.Previous != null && pindex.Previous.Previous != null && !pindex.Header.PosParameters.IsSet())
-				pindex = pindex.Previous;
-
-			while (pindex != null)
 			{
+				stack.Push(pindex);
+				pindex = pindex.Previous;
+			}
+			while (stack.Any())
+			{
+				pindex = stack.Pop();
+
 				var block = this.GetFullBlock(pindex.HashBlock);
 				if (block == null)
 					break;
+
 				if (!this.ValidateBlock(block))
 					throw new InvalidBlockException();
-				pindex = this.GetBlock(pindex.Height + 1);
 			}
 		}
 
 		public bool ValidateBlock(Block block)
 		{
-			var chainedBlock = this.GetBlock(block.GetHash());
-			// todo: add a check in the validator to make sure posparams are set
+			ChainedBlock chainedBlock;
+			return this.ValidateBlock(block, out chainedBlock);
+		}
+
+		public bool ValidateBlock(Block block, out ChainedBlock chainedBlock)
+		{
+			chainedBlock = this.GetBlock(block.GetHash());
+			if (chainedBlock == null)
+				return false;
 
 			if (!block.Header.PosParameters.IsSet())
-			{
 				chainedBlock.Header.PosParameters = block.SetPosParams();
-			}
 
 			return nStratis.temp.BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
 		}
 
-		public void AddBlock(Block block)
+		public bool ValidateAndAddBlock(Block block)
 		{
-			var chainedBlock = this.GetBlock(block.GetHash());
+			// before adding a block it must be validated
+			// so  it makes sense to group the 
+			// functionality together in one place
 
-			if (!chainedBlock.Header.PosParameters.IsSet())
-				throw new InvalidBlockException("POS params must be set");
+			ChainedBlock chainedBlock;
+			if (!this.ValidateBlock(block, out chainedBlock))
+				return false;
 			
 			this.indexStore.Put(block);
 			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
 			this.LastIndexedBlock = chainedBlock;
 			this.TransactionIndex.Add(block);
+
+			return true;
 		}
 
 		public Block GetFullBlock(uint256 blockId)
@@ -85,18 +102,29 @@ namespace StratisMinter.Services
 			return this.blockMemoryStore.Get(blockId, () => this.indexStore.Get(blockId));
 		}
 
-		private ChainedBlock FindLastIndexedBlock()
+		public ChainedBlock FindLastIndexedBlock()
+		{
+			return this.EnumerateToLastIndexedBlock().Last();
+		}
+
+		public IEnumerable<ChainedBlock> EnumerateToLastIndexedBlock()
 		{
 			var current = this.Tip;
 
 			while (current != this.Genesis)
 			{
 				if (indexStore.Get(current.HashBlock) != null)
-					return current;
+				{
+					// we found the last block stop searching
+					yield return current;
+					yield break;
+				}
+
+				yield return current;
 				current = current.Previous;
 			}
 
-			return this.Genesis;
+			yield return this.Genesis;
 		}
 
 		public Task<Block> GetBlockAsync(uint256 blockId)
@@ -119,6 +147,26 @@ namespace StratisMinter.Services
 		public Task PutAsync(uint256 txId, Transaction tx)
 		{
 			throw new NotImplementedException();
+		}
+
+		public override ChainedBlock SetTip(ChainedBlock block)
+		{
+			var oldTip = base.SetTip(block);
+
+			if (this.LastIndexedBlock != null)
+			{
+				var tipdindex = this.LastIndexedBlock;
+				var pindex = this.Tip.FindAncestorOrSelf(this.LastIndexedBlock.HashBlock);
+
+				while (!pindex.Header.PosParameters.IsSet())
+				{
+					pindex.Header.PosParameters = tipdindex.Header.PosParameters;
+					pindex = pindex.Previous;
+					tipdindex = tipdindex.Previous;
+				}
+			}
+
+			return oldTip;
 		}
 	}
 
@@ -173,20 +221,15 @@ namespace StratisMinter.Services
 			this.ChainIndex.TransactionIndex.Load();
 			this.logger.LogInformation("ReIndex transaction store...");
 			this.ChainIndex.TransactionIndex.ReIndex(this.ChainIndex);
-			this.logger.LogInformation("Save transaction store...");
-			this.ChainIndex.TransactionIndex.SaveToDisk();
 
 			// recalculate any pos parameters that
 			// may have bene missed
-			this.logger.LogInformation("POS Catchup...");
+			this.logger.LogInformation("Catching up with POS calculations...");
 			this.ChainIndex.PosCatchup();
 
 			// sync the headers and save to disk
-			this.logger.LogInformation("Save Chain...");
+			this.logger.LogInformation("Save ChainHeaders to disk...");
 			this.SaveToDisk();
-
-			// enable sync on the behaviours 
-			this.nodeConnectionService.EnableHeaderSyncing();
 
 			return this;
 		}

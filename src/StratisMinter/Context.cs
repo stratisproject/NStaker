@@ -27,8 +27,10 @@ namespace StratisMinter
 				ConnectionParameters = new NodeConnectionParameters(),
 				ChainIndex = new ChainIndex(),
 				Counter = new PerformanceCounter(),
+				TaskScheduler = TaskScheduler.Default,
+				DownloadMode = true // we always start in download mode
 			};
-
+			
 			// override the connection cancelation token
 			context.ConnectionParameters.ConnectCancellation = context.CancellationToken;
 			//context.ChainIndex.Load(context);
@@ -44,6 +46,10 @@ namespace StratisMinter
 		public ChainIndex ChainIndex { get; private set; }
 		public PerformanceCounter Counter { get; private set; }
 		public IServiceProvider Service { get; set; }
+
+		public TaskScheduler TaskScheduler { get; private set; }
+
+		public bool DownloadMode { get; set; }
 
 		public override string ToString()
 		{

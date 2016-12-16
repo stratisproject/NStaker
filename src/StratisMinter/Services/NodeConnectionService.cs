@@ -3,6 +3,7 @@ using System.Linq;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
+using StratisMinter.Behaviour;
 
 namespace StratisMinter.Services
 {
@@ -35,6 +36,9 @@ namespace StratisMinter.Services
 
 			// some config settings
 			this.NodesGroup.MaximumNodeConnection = this.context.Config.MaximumNodeConnection;
+
+			// set the connection parameters
+			this.NodesGroup.NodeConnectionParameters = this.context.ConnectionParameters;
 		}
 
 		public void OnStop()
@@ -42,21 +46,7 @@ namespace StratisMinter.Services
 			this.NodesGroup.Disconnect();
 		}
 
-		public NodeConnectionService CreateBehaviours()
-		{
-			// register a behaviour, the ChainBehavior maintains 
-			// the chain of headers in sync with the network
-			// before we loaded the headers don't sync the chain
-			var behaviour = new ChainBehavior(this.context.ChainIndex) { CanSync = false };
-			this.context.ConnectionParameters.TemplateBehaviors.Add(behaviour);
-
-			// set the connection parameters
-			this.NodesGroup.NodeConnectionParameters = this.context.ConnectionParameters;
-
-			return this;
-		}
-
-		public void EnableHeaderSyncing()
+		public void EnableSyncing()
 		{
 			// enable sync on the chain behaviours
 			// this will keep the chain headers in 
@@ -68,6 +58,13 @@ namespace StratisMinter.Services
 			foreach (var node in this.NodesGroup.ConnectedNodes)
 				foreach (var behavior in node.Behaviors.OfType<ChainBehavior>())
 					behavior.CanSync = true;
+
+			foreach (var behavior in this.context.ConnectionParameters.TemplateBehaviors.OfType<BlockSyncBehaviour>())
+				behavior.CanRespondToBlockPayload = true;
+
+			foreach (var node in this.NodesGroup.ConnectedNodes)
+				foreach (var behavior in node.Behaviors.OfType<BlockSyncBehaviour>())
+					behavior.CanRespondToBlockPayload = true;
 		}
 
 		public void StartConnecting()

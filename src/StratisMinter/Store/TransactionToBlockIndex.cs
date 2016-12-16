@@ -8,7 +8,7 @@ using StratisMinter.Services;
 
 namespace StratisMinter.Store
 {
-	public class TransactionToBlockItemIndex :  IDiskStore
+	public class TransactionToBlockItemIndex 
 	{
 		protected readonly Dictionary<uint256, uint256> Table;
 		protected readonly object LockObj = new object();
@@ -35,30 +35,55 @@ namespace StratisMinter.Store
 			{
 				bool added = false;
 				var blockHash = block.GetHash();
+				var appendTable = new Dictionary<uint256, uint256>();
+
 				foreach (var transaction in block.Transactions)
-					added = this.Table.TryAdd(transaction.GetHash(), blockHash);
+				{
+					var trxid = transaction.GetHash();
+					if (this.Table.TryAdd(trxid, blockHash))
+					{
+						added = true;
+						appendTable.TryAdd(trxid, blockHash);
+					}
+				}
 
 				if (added)
 				{
 					if (this.LastBlockId != blockHash)
 						this.LastBlockId = blockHash;
 				}
+
+				this.AppendToStream(appendTable, append: true);
+			}
+		}
+
+		private void AppendToStream(Dictionary<uint256, uint256> appendTable, FileStream fileStream = null, bool append = false)
+		{
+			using (var file = fileStream ?? File.OpenWrite(this.context.Config.File("trxindex.dat")))
+			{
+				if (append)
+					file.Position = file.Length;
+
+				var stream = new BitcoinStream(file, true);
+
+				foreach (var persistableItem in appendTable)
+				{
+					stream.ReadWrite(persistableItem.Key.AsBitcoinSerializable());
+					stream.ReadWrite(persistableItem.Value.AsBitcoinSerializable());
+				}
 			}
 		}
 
 		public void Save()
 		{
+			// the save method is when we need to persist 
+			// the entire collection in case it was modified 
+			// for example if a reorg has removed some blocks
 			lock (LockObj)
 			{
 				using (var file = File.OpenWrite(this.context.Config.File("trxindex.dat")) )
 				{
-					var stream = new BitcoinStream(file, true);
-						
-					foreach (var persistableItem in this.Table)
-					{
-						stream.ReadWrite(persistableItem.Key.AsBitcoinSerializable());
-						stream.ReadWrite(persistableItem.Value.AsBitcoinSerializable());
-					}
+					this.AppendToStream(this.Table, file);
 				}
 			}
 		}
@@ -86,7 +111,8 @@ namespace StratisMinter.Store
 								uint256.MutableUint256 value = null;
 								stream.ReadWrite(ref key);
 								stream.ReadWrite(ref value);
-								this.Table.TryAdd(key.Value, value.Value);
+								if(!this.Table.TryAdd(key.Value, value.Value))
+									throw new InvalidDataException(); // this is wrong it means duplicates where persisted to disk
 							}
 						}
 						catch (EndOfStreamException)
@@ -100,11 +126,6 @@ namespace StratisMinter.Store
 					}
 				}
 			}
-		}
-
-		public void SaveToDisk()
-		{
-			this.Save();
 		}
 
 		public void ReIndex(ChainIndex chainIndex)
