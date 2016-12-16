@@ -39,7 +39,7 @@ namespace StratisMinter.Store
 			// same level of the chain index
 			var pindex = this.Tip;
 			var stack = new Stack<ChainedBlock>();
-			while (pindex.Previous != null && pindex.Previous.Previous != null && !pindex.Header.PosParameters.IsSet())
+			while (pindex.Previous != null && !pindex.Header.PosParameters.IsSet())
 			{
 				stack.Push(pindex);
 				pindex = pindex.Previous;
