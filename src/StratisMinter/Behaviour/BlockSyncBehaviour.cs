@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +8,9 @@ using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
 using nStratis.Protocol.Payloads;
+using StratisMinter.Base;
 using StratisMinter.Services;
+using StratisMinter.Store;
 
 namespace StratisMinter.Behaviour
 {
@@ -24,7 +26,7 @@ namespace StratisMinter.Behaviour
 	/// It can also broadcast blocks to connected nodes
 	/// The hub is shared between all behaviours
 	/// </summary>
-	public class BlockSyncHub
+	public class BlockSyncHub 
 	{
 		public ConcurrentDictionary<BlockSyncBehaviour, Node> Behaviours { get; }
 		public BlockingCollection<HubBroadcastItem> BroadcastBlocks { get; }
@@ -33,9 +35,7 @@ namespace StratisMinter.Behaviour
 		private readonly List<Task> runningTasks;
 		private readonly ChainIndex chainIndex;
 
-		public Context Context { get; }
-
-		public BlockSyncHub(Context context)
+		public BlockSyncHub(Context context) 
 		{
 			this.Context = context;
 			this.chainIndex = context.ChainIndex;
@@ -45,8 +45,12 @@ namespace StratisMinter.Behaviour
 			this.ReceiveBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
 		}
 
+		public Context Context { get; set; }
+
 		public BlockSyncHub StartBroadcasting()
 		{
+			// move this to be its own background worker
+
 			var task = Task.Factory.StartNew(() =>
 			{
 				try

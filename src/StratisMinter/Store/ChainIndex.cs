@@ -1,17 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using nStratis;
 using nStratis.BitcoinCore;
-using StratisMinter.Store;
-using System.Linq;
-using Microsoft.Extensions.Logging;
-using nStratis.Protocol.Behaviors;
+using StratisMinter.Services;
 
-namespace StratisMinter.Services
+namespace StratisMinter.Store
 {
-
 	public class ChainIndex : ConcurrentChain , IBlockRepository, 
 		IBlockTransactionMapStore, ITransactionRepository
 	{
@@ -76,7 +72,7 @@ namespace StratisMinter.Services
 			if (!block.Header.PosParameters.IsSet())
 				chainedBlock.Header.PosParameters = block.SetPosParams();
 
-			return nStratis.temp.BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
+			return BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
 		}
 
 		public bool ValidateAndAddBlock(Block block)
@@ -151,13 +147,23 @@ namespace StratisMinter.Services
 
 		public override ChainedBlock SetTip(ChainedBlock block)
 		{
+			// its probably wise to lock this operation
+			// in case another thread kicks in while copying POS params
 			var oldTip = base.SetTip(block);
+
+			// when many nodes are modifying the chain
+			// the POS parameters are getting overridden
+			// that because the headers don't have the 
+			// POS parameters from the network but they are
+			// calculated when validating a block
 
 			if (this.LastIndexedBlock != null)
 			{
 				var tipdindex = this.LastIndexedBlock;
 				var pindex = this.Tip.FindAncestorOrSelf(this.LastIndexedBlock.HashBlock);
 
+				// iterate over old POS params and copy
+				//  over to the new instances on the chain
 				while (!pindex.Header.PosParameters.IsSet())
 				{
 					pindex.Header.PosParameters = tipdindex.Header.PosParameters;
@@ -167,107 +173,6 @@ namespace StratisMinter.Services
 			}
 
 			return oldTip;
-		}
-	}
-
-	public class ChainSyncService : IStoppable, IDiskStore
-	{
-		private readonly Context context;
-		private readonly NodeConnectionService nodeConnectionService;
-		private readonly ILogger logger;
-
-		public ChainIndex ChainIndex { get; }
-
-		public ChainSyncService(Context context, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory)
-		{
-			this.context = context;
-			this.ChainIndex = this.context.ChainIndex;
-			this.nodeConnectionService = nodeConnectionService;
-			this.logger = loggerFactory.CreateLogger<ChainSyncService>();
-		}
-
-		public ChainSyncService LoadHeaders()
-		{
-
-			// load headers form file (or genesis)
-			if (File.Exists(this.context.Config.File("headers.dat")))
-			{
-				this.logger.LogInformation("Loading headers form disk...");
-				this.ChainIndex.Load(File.ReadAllBytes(this.context.Config.File("headers.dat")));
-			}
-			else
-			{
-				this.logger.LogInformation("Loading headers no file found...");
-				var genesis = this.context.Network.GetGenesis();
-				this.ChainIndex.SetTip(new ChainedBlock(genesis.Header, 0));
-				// validate the block to generate the pos params
-				this.ChainIndex.ValidateBlock(genesis);
-			}
-
-			// load the index chain this will 
-			// add each block index to memory for fast lookup
-			this.ChainIndex.Initialize(this.context);
-
-			// sync the headers chain
-			this.logger.LogInformation("Sync chain headers with network...");
-			this.SyncChain();
-
-			// index the sore
-			this.logger.LogInformation("ReIndex block store...");
-			this.ChainIndex.ReIndexStore();
-
-			// load transaction indexes
-			this.logger.LogInformation("Load transaction index store...");
-			this.ChainIndex.TransactionIndex.Load();
-			this.logger.LogInformation("ReIndex transaction store...");
-			this.ChainIndex.TransactionIndex.ReIndex(this.ChainIndex);
-
-			// recalculate any pos parameters that
-			// may have bene missed
-			this.logger.LogInformation("Catching up with POS calculations...");
-			this.ChainIndex.PosCatchup();
-
-			// sync the headers and save to disk
-			this.logger.LogInformation("Save ChainHeaders to disk...");
-			this.SaveToDisk();
-
-			return this;
-		}
-
-		public void SyncChain()
-		{
-			// download all block headers up to current tip
-			// this will loop until complete using a new node
-			// if the current node got disconnected 
-			var node = this.nodeConnectionService.GetNode(true);
-			node.SynchronizeChain(ChainIndex, null, context.CancellationToken);
-		}
-
-		private readonly LockObject saveLock = new LockObject();
-		private long savedHeight = 0;
-
-		// this method is thread safe
-		// it should be called periodically by a behaviour  
-		// that is in charge of keeping the chin in sync
-		public void SaveToDisk()
-		{
-			saveLock.Lock(() => this.ChainIndex.Tip.Height > savedHeight, () =>
-			{
-				using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
-				{
-					this.ChainIndex.WriteTo(file);
-				}
-
-				this.savedHeight = this.ChainIndex.Tip.Height;
-			});
-		}
-
-		public void OnStop()
-		{
-			// stop the syncing behaviour
-
-			// save the current header chain to disk
-			this.SaveToDisk();
 		}
 	}
 }

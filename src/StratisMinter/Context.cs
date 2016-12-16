@@ -11,10 +11,11 @@ using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
 using StratisMinter.Services;
 using Microsoft.Extensions.DependencyInjection;
+using StratisMinter.Store;
 
 namespace StratisMinter
 {
-	public class Context : IStoppable
+	public class Context
 	{
 		public static Context Create(Network network, Config config)
 		{
@@ -39,7 +40,7 @@ namespace StratisMinter
 
 		public Network Network { get; private set; }
 		public Config Config { get; private set; }
-		public AddressManager AddressManager { get; private set; }
+		public AddressManager AddressManager { get; set; }
 		public CancellationToken CancellationToken => this.CancellationTokenSource.Token;
 		public CancellationTokenSource CancellationTokenSource { get; private set; }
 		public NodeConnectionParameters ConnectionParameters { get; private set; }
@@ -64,36 +65,6 @@ namespace StratisMinter
 			builder.AppendLine($"HeaderTip = \t\t {this.ChainIndex?.Tip?.Height}");
 			builder.AppendLine($"IndexedBlock = \t\t {this.ChainIndex?.LastIndexedBlock?.Height}");
 			return builder.ToString();
-		}
-
-	
-
-		public void OnStop()
-		{
-			this.AddressManager.SavePeerFile(this.Config.File("peers.dat"), this.Network);
-		}
-
-		public void LoadAddressManager()
-		{
-			if (File.Exists(this.Config.File("peers.dat")))
-			{
-				this.AddressManager = AddressManager.LoadPeerFile(this.Config.File("peers.dat"), this.Network);
-				return;
-			}
-
-			// the ppers file is empty so we load new peers
-			// peers are then saved to peer.dat file so next time load is faster
-			this.AddressManager = new AddressManager();
-			NodeConnectionParameters parameters = new NodeConnectionParameters();
-			parameters.TemplateBehaviors.Add(new AddressManagerBehavior(this.AddressManager));
-
-			// when the node connects new addresses are discovered
-			using (var node = Node.Connect(Network.Main, parameters))
-			{
-				node.VersionHandshake(this.CancellationToken);
-			}
-
-			this.AddressManager.SavePeerFile(this.Config.File("peers.dat"), this.Network);
 		}
 	}
 }

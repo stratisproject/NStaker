@@ -3,32 +3,29 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using StratisMinter.Base;
 
 namespace StratisMinter
 {
-    public class Logger
+    public class Logger : BackgroundWorkItem
     {
 		private readonly Context context;
 		private readonly ILogger logger;
 
-		public Logger(Context context, ILoggerFactory loggerFactory)
+		public Logger(Context context, ILoggerFactory loggerFactory) : base(context)
 		{
 			this.context = context;
 			this.logger = loggerFactory.CreateLogger<Staker>();
 		}
 
-	    public Task Run()
+	    protected override void Work()
 	    {
-		    return Task.Run(() =>
+		    while (this.NotCanceled())
 		    {
-			    while (!this.context.CancellationToken.IsCancellationRequested)
-			    {
-					this.logger.LogInformation(this.context.ToString());
-				    this.context.CancellationToken.WaitHandle.WaitOne(10000);
-			    }
-
-		    }, this.context.CancellationToken);
+			    this.logger.LogInformation(this.context.ToString());
+			    this.Cancellation.Token.WaitHandle.WaitOne(10000);
+		    }
 	    }
 
-	}
+    }
 }

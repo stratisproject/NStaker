@@ -5,6 +5,11 @@ using System.Threading.Tasks;
 
 namespace StratisMinter
 {
+	public class TimeSpanExtention
+	{
+		public static int Infinite => -1;
+	}
+
     public static class Extensions
     {
 		public static void ThrowIfCritical(this Exception ex)
@@ -19,6 +24,8 @@ namespace StratisMinter
 	    {
 		    DoubleLock.Lock(ref obj, condition, action);
 	    }
+
+	    
     }
 
 	public class DoubleLock

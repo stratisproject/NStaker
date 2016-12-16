@@ -4,29 +4,72 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol;
+using StratisMinter.Base;
+using StratisMinter.Store;
 
 namespace StratisMinter.Services
 {
-	public class BlockFetcher
+	public class DownloadWorker : BlockingWorkItem
+	{
+		private readonly ChainService chainSyncService;
+		private readonly Logger logger;
+		private readonly DownloadManager downloadManager;
+
+		public DownloadWorker(Context context, DownloadManager downloadManager, ChainService chainSyncService, Logger logger) : base(context)
+		{
+			this.chainSyncService = chainSyncService;
+			this.logger = logger;
+			this.downloadManager = downloadManager;
+		}
+
+		// this method will block until the whole blockchain is downloaded
+		// that's called the IBD (Initial Block Download) processes
+		// once the block is synced there will be a node behaviour that will 
+		// listen to Inv block messages and append them to the chain
+		public override void Execute()
+		{
+			// this is a hack to start the loger before its time
+			this.logger.Execute();
+
+			// enter in to download mode
+			this.Context.DownloadMode = true;
+
+			this.downloadManager.SyncBlockchain();
+
+			// in the time it took to sync the chain
+			// the tip may have progressed further so at
+			// this point sync the headers and the blocks again 
+			this.chainSyncService.SyncChain();
+			this.downloadManager.SyncBlockchain();
+
+			// the chin may have chanced
+			// update the disk files
+			this.chainSyncService.SaveToDisk();
+
+			// exit download mode
+			this.Context.DownloadMode = false;
+		}
+	}
+
+	public class DownloadFetcher
 	{
 		private readonly DownloadManager downloadManager;
 		private readonly Node node;
-		private readonly Context context;
 		private readonly BlockingCollection<uint256> askCollection;
 		private readonly CancellationTokenSource cancellation;
 		private Task runningTask;
 
-		public BlockFetcher(Context context, DownloadManager downloadManager, Node node)
+		public DownloadFetcher(Context context, DownloadManager downloadManager, Node node)
 		{
-			this.context = context;
 			this.downloadManager = downloadManager;
 			this.node = node;
 			node.StateChanged += NodeOnStateChanged;
 
 			this.askCollection = new BlockingCollection<uint256>(new ConcurrentQueue<uint256>());
-			this.cancellation = CancellationTokenSource.CreateLinkedTokenSource(new[] {this.context.CancellationToken});
+			this.cancellation = CancellationTokenSource.CreateLinkedTokenSource(new[] {context.CancellationToken});
 		}
 
 		private IEnumerable<uint256> EnumerateItems()
@@ -47,7 +90,7 @@ namespace StratisMinter.Services
 			}
 		}
 
-		public BlockFetcher Processes()
+		public DownloadFetcher Processes()
 		{
 			this.runningTask = Task.Factory.StartNew(() =>
 			{
@@ -98,24 +141,26 @@ namespace StratisMinter.Services
 		}
 	}
 
-	public class DownloadManager : IStoppable
+	public class DownloadManager 
 	{
 		private readonly Context context;
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ChainIndex chainIndex;
-		private readonly ChainSyncService chainSyncService;
+		private readonly ChainService chainSyncService;
+		private readonly ILogger logger;
 
-		public ConcurrentDictionary<BlockFetcher, Node> Fetchers { get; }
+		public ConcurrentDictionary<DownloadFetcher, Node> Fetchers { get; }
 		public ConcurrentDictionary<uint256, Block> ReceivedBlocks { get; }
 
-		public DownloadManager(Context context, NodeConnectionService nodeConnectionService, ChainSyncService chainSyncService)
+		public DownloadManager(Context context, NodeConnectionService nodeConnectionService, ChainService chainSyncService, ILoggerFactory loggerFactory)
 		{
 			this.context = context;
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
 			this.ReceivedBlocks = new ConcurrentDictionary<uint256, Block>();
-			this.Fetchers = new ConcurrentDictionary<BlockFetcher, Node>();
+			this.Fetchers = new ConcurrentDictionary<DownloadFetcher, Node>();
+			this.logger = loggerFactory.CreateLogger<DownloadManager>();
 		}
 
 		public int DownloadedBlocks => this.ReceivedBlocks.Count;
@@ -125,7 +170,7 @@ namespace StratisMinter.Services
 			this.ReceivedBlocks.TryAdd(block.GetHash(), block);
 		}
 		
-		public void OnStop()
+		public void Deplete()
 		{
 			this.ReceivedBlocks.Clear();
 			foreach (var fetcher in this.Fetchers)
@@ -152,10 +197,10 @@ namespace StratisMinter.Services
 			return block;
 		}
 
-		private BlockFetcher CreateFetcher()
+		private DownloadFetcher CreateFetcher()
 		{
 			var node = this.nodeConnectionService.GetNode(true);
-			var fetcher = new BlockFetcher(this.context, this, node).Processes();
+			var fetcher = new DownloadFetcher(this.context, this, node).Processes();
 			this.Fetchers.TryAdd(fetcher, node);
 			return fetcher;
 		}
@@ -173,7 +218,8 @@ namespace StratisMinter.Services
 			if (this.chainIndex.Height == currentChain.Height)
 				return;
 
-			this.OnStop();
+			this.logger.LogInformation($"Download starting at {currentBlock.Height}");
+			this.Deplete();
 			var askBlockId = currentBlock.HashBlock;
 			var blockCountToAsk = 100;
 			var saveIndex = 0;
@@ -210,6 +256,8 @@ namespace StratisMinter.Services
 					if(!this.chainIndex.ValidateAndAddBlock(nextBlock))
 						throw new InvalidBlockException();
 
+					//this.logger.LogInformation($"Added block {next.Height} hash {next.HashBlock}");
+
 					this.context.Counter.SetBlockCount(next.Height);
 					this.context.Counter.AddBlocksCount(1);
 
@@ -234,7 +282,8 @@ namespace StratisMinter.Services
 				}
 			}
 
-			this.OnStop();
+			this.logger.LogInformation($"Download Complete");
+			this.Deplete();
 		}
 	}
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
+using StratisMinter.Base;
 using StratisMinter.Behaviour;
 
 namespace StratisMinter.Services
@@ -18,10 +19,8 @@ namespace StratisMinter.Services
 		}
 	}
 
-	public class NodeConnectionService : IStoppable
+	public class NodeConnectionService : BackgroundWorkItem
 	{
-		private readonly Context context;
-
 		// the nodes group maintains open connections with other
 		// nodes in the network up to a count, if nodes get disconnected 
 		// the NodesGroup will try search and connect to new nodes
@@ -29,16 +28,15 @@ namespace StratisMinter.Services
 		// of notifying the parent (NodesGroup) when the node got disconnected 
 		public NodesGroup NodesGroup { get; }
 
-		public NodeConnectionService(Context context)
+		public NodeConnectionService(Context context) : base(context)
 		{
-			this.context = context;
-			this.NodesGroup = new NodesGroup(this.context.Network);
+			this.NodesGroup = new NodesGroup(this.Context.Network);
 
 			// some config settings
-			this.NodesGroup.MaximumNodeConnection = this.context.Config.MaximumNodeConnection;
+			this.NodesGroup.MaximumNodeConnection = this.Context.Config.MaximumNodeConnection;
 
 			// set the connection parameters
-			this.NodesGroup.NodeConnectionParameters = this.context.ConnectionParameters;
+			this.NodesGroup.NodeConnectionParameters = this.Context.ConnectionParameters;
 		}
 
 		public void OnStop()
@@ -52,14 +50,14 @@ namespace StratisMinter.Services
 			// this will keep the chain headers in 
 			// sync with the network 
 
-			foreach (var behavior in this.context.ConnectionParameters.TemplateBehaviors.OfType<ChainBehavior>())
+			foreach (var behavior in this.Context.ConnectionParameters.TemplateBehaviors.OfType<ChainBehavior>())
 				behavior.CanSync = true;
 			
 			foreach (var node in this.NodesGroup.ConnectedNodes)
 				foreach (var behavior in node.Behaviors.OfType<ChainBehavior>())
 					behavior.CanSync = true;
 
-			foreach (var behavior in this.context.ConnectionParameters.TemplateBehaviors.OfType<BlockSyncBehaviour>())
+			foreach (var behavior in this.Context.ConnectionParameters.TemplateBehaviors.OfType<BlockSyncBehaviour>())
 				behavior.CanRespondToBlockPayload = true;
 
 			foreach (var node in this.NodesGroup.ConnectedNodes)
@@ -83,10 +81,10 @@ namespace StratisMinter.Services
 					throw new NoConnectedNodesException("no connected nodes");
 			}
 
-			if (this.context.Config.TrustedNodes.Empty())
+			if (this.Context.Config.TrustedNodes.Empty())
 				throw new NoConnectedNodesException("no trusted nodes");
 
-			foreach (var endPoint in this.context.Config.TrustedNodes)
+			foreach (var endPoint in this.Context.Config.TrustedNodes)
 			{
 				var node = this.NodesGroup.TryConnectNode(endPoint);
 				if (node != null)
@@ -94,6 +92,13 @@ namespace StratisMinter.Services
 			}
 
 			throw new NoConnectedNodesException("no trusted nodes");
+		}
+
+		protected override void Work()
+		{
+			this.EnableSyncing();
+			this.StartConnecting();
+			this.Cancellation.Token.WaitHandle.WaitOne(TimeSpanExtention.Infinite);
 		}
 	}
 }

@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using nStratis;
 using nStratis.Crypto;
 
-namespace nStratis.temp
+namespace StratisMinter
 {
 	/// <summary>
 	/// Block validation functionality
