@@ -1,24 +1,24 @@
 ﻿using System.IO;
 using Microsoft.Extensions.Logging;
 using nStratis.Protocol.Behaviors;
+using StratisMinter.Base;
 using StratisMinter.Store;
 
 namespace StratisMinter.Services
 {
-	public class ChainService 
+	public class ChainService : BackgroundWorkItem 
 	{
-		private readonly Context context;
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ILogger logger;
 
 		public ChainIndex ChainIndex { get; }
 
-		public ChainService(Context context, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory)
+		public ChainService(Context context, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory) : base(context)
 		{
-			this.context = context;
-			this.ChainIndex = this.context.ChainIndex;
+			this.ChainIndex = this.Context.ChainIndex;
 			this.nodeConnectionService = nodeConnectionService;
 			this.logger = loggerFactory.CreateLogger<ChainService>();
+			this.Disposables.Add(this.ChainIndex.TipRecetEvent);
 		}
 
 		public void SyncChain()
@@ -27,7 +27,7 @@ namespace StratisMinter.Services
 			// this will loop until complete using a new node
 			// if the current node got disconnected 
 			var node = this.nodeConnectionService.GetNode(true);
-			node.SynchronizeChain(ChainIndex, null, context.CancellationToken);
+			node.SynchronizeChain(ChainIndex, null, this.Context.CancellationToken);
 		}
 
 		private readonly LockObject saveLock = new LockObject();
@@ -40,7 +40,7 @@ namespace StratisMinter.Services
 		{
 			saveLock.Lock(() => force || this.ChainIndex.Tip.Height > savedHeight, () =>
 			{
-				using (var file = File.OpenWrite(this.context.Config.File("headers.dat")))
+				using (var file = File.OpenWrite(this.Context.Config.File("headers.dat")))
 				{
 					this.ChainIndex.WriteTo(file);
 				}
@@ -49,5 +49,13 @@ namespace StratisMinter.Services
 			});
 		}
 
+		protected override void Work()
+		{
+			// do nothing here for now we use this
+			// class to manage the ChainIndex 
+			// (or manage its dispose work to be accurate)
+
+			this.Cancellation.Token.WaitHandle.WaitOne(TimeSpanExtention.Infinite);
+		}
 	}
 }

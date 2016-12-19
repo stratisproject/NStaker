@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using nStratis;
 using nStratis.Protocol.Behaviors;
 using StratisMinter.Base;
@@ -43,6 +45,7 @@ namespace StratisMinter
 				.AddSingleton<BlockSender>().AddSingleton<BackgroundWorkItem, BlockSender>(provider => provider.GetService<BlockSender>())
 				.AddSingleton<BlockMiner>().AddSingleton<BackgroundWorkItem, BlockMiner>(provider => provider.GetService<BlockMiner>())
 				.AddSingleton<Logger>().AddSingleton<BackgroundWorkItem, Logger>(provider => provider.GetService<Logger>())
+				.AddSingleton<LoggerKeyReader>().AddSingleton<BackgroundWorkItem, LoggerKeyReader>(provider => provider.GetService<LoggerKeyReader>())
 				// BlockingWorkItem
 				.AddSingleton<DownloadWorker>().AddSingleton<BlockingWorkItem, DownloadWorker>(provider => provider.GetService<DownloadWorker>())
 				// standalone types
@@ -50,16 +53,17 @@ namespace StratisMinter
 				.AddSingleton<BlockSyncHub>()
 				.AddSingleton<DownloadManager>()
 				.AddSingleton<ChainIndex>()
+				.AddSingleton<LogFilter>()
 				// build
 				.BuildServiceProvider();
 
 			this.context.Service = services;
 
 			//configure console logging
-			this.services
-				.GetService<ILoggerFactory>()
-				.AddConsole(LogLevel.Information);
-		}
+		    this.services
+			    .GetService<ILoggerFactory>()
+			    .AddConsole(this.services.GetService<LogFilter>().Filter, false);
+	    }
 
 		public void Run(Config config)
 	    {

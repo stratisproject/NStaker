@@ -31,17 +31,23 @@ namespace StratisMinter.Services
 				// this method blocks
 				this.WaitForDownLoadMode();
 
-				var bloksToAsk = this.chainIndex.EnumerateAfter(this.chainIndex.LastIndexedBlock).ToArray();
-
-				if (bloksToAsk.Count() > 50)
+				if (this.BlockSyncHub.Behaviours.Any())
 				{
-					// we need to kick the DownloadOrCatchup() method
-					// for now just batch the sync processes
+					var bloksToAsk = this.chainIndex.EnumerateAfter(this.chainIndex.LastIndexedBlock).ToArray();
+
+					if (bloksToAsk.Count() > 50)
+					{
+						// we need to kick the DownloadOrCatchup() method
+						// for now just batch the sync processes
+					}
+
+					this.BlockSyncHub.AskBlocks(bloksToAsk.Select(s => s.HashBlock).Take(50));
 				}
 
-				this.BlockSyncHub.AskBlocks(bloksToAsk.Select(s => s.HashBlock).Take(50));
-
-				this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
+				// wait for the chain index to signal a new tip
+				// or check after an interval has passed
+				this.chainIndex.TipRecetEvent.WaitOne(TimeSpan.FromMinutes(10));
+				//this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
 			}
 		}
 	}

@@ -31,8 +31,11 @@ namespace StratisMinter.Modules
 			// load transaction indexes
 			this.logger.LogInformation("Load transaction index store...");
 			this.ChainIndex.TransactionIndex.Load();
-			this.logger.LogInformation("ReIndex transaction store...");
-			this.ChainIndex.TransactionIndex.ReIndex(this.ChainIndex);
+			
+			// now that transactions are appended and saved on each block
+			// no need to reload the index anymore
+			//this.logger.LogInformation("ReIndex transaction store...");
+			//this.ChainIndex.TransactionIndex.ReIndex(this.ChainIndex);
 		}
 	}
 }

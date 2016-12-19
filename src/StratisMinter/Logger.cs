@@ -1,31 +1,94 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using StratisMinter.Base;
+using StratisMinter.Services;
 
 namespace StratisMinter
 {
+	public class LogFilter
+	{
+		public bool Log { get; set; }
+
+		public Func<string, LogLevel, bool> Filter => this.OnFilter;
+
+		private bool OnFilter(string category, LogLevel logLevel)
+		{
+			return this.Log;
+		}
+	}
+
+	public class LoggerKeyReader : BackgroundWorkItem
+	{
+		private ILoggerFactory loggerFactory;
+		private readonly LogFilter logFilter;
+
+		public LoggerKeyReader(Context context, ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
+		{
+			this.loggerFactory = loggerFactory;
+			this.logFilter = logFilter;
+		}
+
+		protected override void Work()
+		{
+			while (this.NotCanceled())
+			{
+				var key = Console.ReadKey();
+				if (key.Key == ConsoleKey.Spacebar)
+					this.logFilter.Log = !this.logFilter.Log;
+			}
+		}
+	}
+
     public class Logger : BackgroundWorkItem
     {
 		private readonly Context context;
-		private readonly ILogger logger;
+	    private readonly LogFilter logFilter;
+	    private readonly ILogger logger;
 
-		public Logger(Context context, ILoggerFactory loggerFactory) : base(context)
+		public Logger(Context context, ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
 		{
 			this.context = context;
+			this.logFilter = logFilter;
 			this.logger = loggerFactory.CreateLogger<Staker>();
 		}
 
 	    protected override void Work()
 	    {
+
 		    while (this.NotCanceled())
 		    {
-			    this.logger.LogInformation(this.context.ToString());
-			    this.Cancellation.Token.WaitHandle.WaitOne(10000);
+			    if (!this.logFilter.Log)
+			    {
+				    Console.Clear();
+					Console.Write(BuildOutput());
+					//this.logger.LogInformation(BuildOutput());
+			    }
+			    this.Cancellation.Token.WaitHandle.WaitOne(1000);
 		    }
 	    }
 
+	    protected string BuildOutput()
+	    {
+			StringBuilder builder = new StringBuilder();
+			builder.AppendLine("==== Stats ====");
+			builder.AppendLine($"Elapsed = \t\t {this.Context.Counter.Elapsed:c}");
+			builder.AppendLine($"ConnectedNodes = \t\t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
+			builder.AppendLine($"HeaderTip = \t\t {this.context.ChainIndex?.Tip?.Height}");
+			builder.AppendLine($"IndexedBlock = \t\t {this.context.ChainIndex?.LastIndexedBlock?.Height}");
+		    if (this.context.DownloadMode)
+		    {
+			    builder.AppendLine("==== Perf ====");
+			    builder.AppendLine($"CurrentBlock = \t\t {this.Context.Counter.BlockCount}");
+			    builder.AppendLine($"PendingBlocks = \t\t {this.Context.Counter.PendingBlocks}");
+			    builder.AppendLine($"Blocks = \t\t\t {(this.Context.Counter.Elapsed.TotalMilliseconds/this.Context.Counter.BlockCount):0.0000} ms/block");
+		    }
+		    return builder.ToString();
+		}
     }
 }

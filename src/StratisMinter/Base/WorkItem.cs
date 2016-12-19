@@ -16,7 +16,6 @@ namespace StratisMinter.Base
 			this.Disposables = new List<IDisposable>();
 		}
 
-
 		private bool disposed;
 		public void Dispose()
 		{

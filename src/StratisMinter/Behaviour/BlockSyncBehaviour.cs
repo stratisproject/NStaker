@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
@@ -26,8 +27,10 @@ namespace StratisMinter.Behaviour
 	/// It can also broadcast blocks to connected nodes
 	/// The hub is shared between all behaviours
 	/// </summary>
-	public class BlockSyncHub 
+	public class BlockSyncHub
 	{
+		public ILogger Logger { get; }
+
 		public ConcurrentDictionary<BlockSyncBehaviour, Node> Behaviours { get; }
 		public BlockingCollection<HubBroadcastItem> BroadcastBlocks { get; }
 		public BlockingCollection<HubBroadcastItem> ReceiveBlocks { get; }
@@ -35,7 +38,7 @@ namespace StratisMinter.Behaviour
 		private readonly List<Task> runningTasks;
 		private readonly ChainIndex chainIndex;
 
-		public BlockSyncHub(Context context) 
+		public BlockSyncHub(Context context, ILoggerFactory loggerFactory) 
 		{
 			this.Context = context;
 			this.chainIndex = context.ChainIndex;
@@ -43,6 +46,8 @@ namespace StratisMinter.Behaviour
 			this.Behaviours = new ConcurrentDictionary<BlockSyncBehaviour, Node>();
 			this.BroadcastBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
 			this.ReceiveBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
+			this.Logger = loggerFactory.CreateLogger<BlockSyncHub>();
+
 		}
 
 		public Context Context { get; set; }
@@ -98,8 +103,9 @@ namespace StratisMinter.Behaviour
 
 			var message = new GetDataPayload(invs.ToArray());
 
-			// for now only ask from one node
-			this.Behaviours.Values.First().SendMessage(message);
+			// for now try to ask 3 nodes for blocks
+			foreach (var behaviour in Behaviours.Values.Take(3))
+				behaviour?.SendMessage(message);
 		}
 	}
 
@@ -138,7 +144,10 @@ namespace StratisMinter.Behaviour
 
 		private void AttachedNode_MessageReceived(Node node, IncomingMessage message)
 		{
-			var getBlocksPayload = message.Message.Payload as GetBlocksPayload;
+			this.blockSyncHub.Logger.LogInformation(
+				$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
+
+			 var getBlocksPayload = message.Message.Payload as GetBlocksPayload;
 			if (this.CanRespondToGetBlocksPayload && getBlocksPayload != null)
 				this.RespondToGetBlocksPayload(node, getBlocksPayload);
 
