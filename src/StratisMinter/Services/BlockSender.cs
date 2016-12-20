@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 using StratisMinter.Store;
@@ -10,16 +11,20 @@ namespace StratisMinter.Services
 	{
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ChainService chainSyncService;
+		private readonly DownloadWorker downloadWorker;
 		private readonly ChainIndex chainIndex;
+		private readonly ILogger logger;
 
 		public BlockSyncHub BlockSyncHub { get; }
 
 		public BlockSender(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService) : base(context)
+			BlockSyncHub blockSyncHub, ChainService chainSyncService, DownloadWorker downloadWorker, ILoggerFactory loggerFactory) : base(context)
 		{
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
+			this.downloadWorker = downloadWorker;
+			this.logger = loggerFactory.CreateLogger<BlockSender>();
 
 			this.BlockSyncHub = blockSyncHub;
 		}
@@ -37,11 +42,13 @@ namespace StratisMinter.Services
 
 					if (bloksToAsk.Count() > 50)
 					{
-						// we need to kick the DownloadOrCatchup() method
-						// for now just batch the sync processes
+						// use the download worker to catch up
+						this.downloadWorker.Execute();
 					}
-
-					this.BlockSyncHub.AskBlocks(bloksToAsk.Select(s => s.HashBlock).Take(50));
+					else
+					{
+						this.BlockSyncHub.AskBlocks(bloksToAsk.Select(s => s.HashBlock));
+					}
 				}
 
 				// wait for the chain index to signal a new tip

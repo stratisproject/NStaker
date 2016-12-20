@@ -76,6 +76,26 @@ namespace StratisMinter.Store
 			return BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
 		}
 
+		public bool ValidateNewBlock(Block block, ChainedBlock chainedBlock)
+		{
+			// todo: combine this method with the other two 
+			if (chainedBlock == null)
+				return false;
+
+			if (!block.Header.PosParameters.IsSet())
+				chainedBlock.Header.PosParameters = block.SetPosParams();
+
+			if (!BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block))
+				return false;
+
+			this.indexStore.Put(block);
+			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
+			this.LastIndexedBlock = chainedBlock;
+			this.TransactionIndex.Add(block);
+
+			return true;
+		}
+
 		public bool ValidateAndAddBlock(Block block)
 		{
 			// before adding a block it must be validated

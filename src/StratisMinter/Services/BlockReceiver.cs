@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using nStratis;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
@@ -25,15 +26,17 @@ namespace StratisMinter.Services
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ChainService chainSyncService;
 		private readonly ChainIndex chainIndex;
+		private readonly ILogger logger;
 
 		public BlockSyncHub BlockSyncHub { get; }
 
 		public BlockReceiver(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService) : base(context)
+			BlockSyncHub blockSyncHub, ChainService chainSyncService, ILoggerFactory loggerFactory) : base(context)
 		{
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
+			this.logger = loggerFactory.CreateLogger<BlockReceiver>();
 
 			this.BlockSyncHub = blockSyncHub;
 		}
@@ -68,6 +71,7 @@ namespace StratisMinter.Services
 						{
 							if (this.chainIndex.ValidateAndAddBlock(receivedBlock.Block))
 							{
+								this.logger.LogInformation($"Added block - height: { receivedChainedBlock.Height } hash: { receivedBlockHash }");
 								continue;
 							}
 						}
@@ -75,12 +79,13 @@ namespace StratisMinter.Services
 						// block is not valid consider adding 
 						// it to a list of invalid blocks and
 						// marking the node to not valid
+						this.logger.LogInformation($"Invalid block : { receivedChainedBlock.HashBlock }");
 						continue;
 					}
 
 					// how many times have we tried to processes this block
 					// if a threshold is reached just discard it
-					if (receivedBlock.Attempts > 10)
+					if (receivedBlock.Attempts > 3)
 						continue;
 
 					// block is not next in line send it back to the list
@@ -96,13 +101,15 @@ namespace StratisMinter.Services
 				// first look for the previous header
 				var prevChainedBlock = this.chainIndex.Tip.FindAncestorOrSelf(receivedBlock.Block.Header.HashPrevBlock);
 				if (prevChainedBlock == null)
-					continue; // not found 
+				{
+					// latest block was not found this could mean 
+					// a longer chain is present or we skipped some inv messages
+					// we need to ask other nodes for a collection of hashes 
+					// pointing to our current tip and queue the current block
 
-				// todo: reorg?
-				// Add some logic to queue aside pending blocks 
-				// if a longer chain mined we wont know until
-				// a we have all the blocks
-			
+					// for new let the chain sync behaviour do the work
+					continue; // not found 
+				}
 
 				// create a new tip
 				var newtip = new ChainedBlock(receivedBlock.Block.Header, receivedBlock.Block.Header.GetHash(), prevChainedBlock);
@@ -113,6 +120,7 @@ namespace StratisMinter.Services
 					if (!validated)
 					{
 						// invalid header received 
+						this.logger.LogInformation($"Invalid header : { newtip.HashBlock }");
 						continue;
 					}
 				}
@@ -122,10 +130,16 @@ namespace StratisMinter.Services
 				if (newtip.Height > this.chainIndex.Tip.Height)
 				{
 					// validate the block 
-					if (this.chainIndex.ValidateAndAddBlock(receivedBlock.Block))
+					if (this.chainIndex.ValidateNewBlock(receivedBlock.Block, newtip))
 					{
 						// if the block is valid set the new tip.
 						this.chainIndex.SetTip(newtip);
+						this.logger.LogInformation($"Added new block - height: { newtip.Height } hash: { receivedBlockHash }");
+					}
+					else
+					{
+						// maybe an untrusted node?
+						this.logger.LogInformation($"Invalid block : { newtip.HashBlock }");
 					}
 				}
 			}

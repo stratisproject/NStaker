@@ -70,8 +70,11 @@ namespace StratisMinter
 			// create the context
 			this.context = Context.Create(Network.Main, config);
 			this.BuildServices();
-			
-		    foreach (var service in this.services.GetServices<StartupModule>().OrderBy(o => o.Priority))
+
+			//start the logger 
+			this.services.GetService<Logger>().Execute();
+
+			foreach (var service in this.services.GetServices<StartupModule>().OrderBy(o => o.Priority))
 				service.Execute();
 
 			foreach (var service in this.services.GetServices<BlockingWorkItem>().OrderBy(o => o.Priority))

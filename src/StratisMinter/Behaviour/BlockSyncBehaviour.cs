@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol;
@@ -11,104 +7,10 @@ using nStratis.Protocol.Behaviors;
 using nStratis.Protocol.Payloads;
 using StratisMinter.Base;
 using StratisMinter.Services;
-using StratisMinter.Store;
+using System.Linq;
 
 namespace StratisMinter.Behaviour
 {
-	public class HubBroadcastItem
-	{
-		public BlockSyncBehaviour Behaviour { get; set; }
-		public Block Block { get; set; }
-		public int Attempts { get; set; }
-	}
-
-	/// <summary>
-	/// The hub is responsible for collecting block messages from nodes
-	/// It can also broadcast blocks to connected nodes
-	/// The hub is shared between all behaviours
-	/// </summary>
-	public class BlockSyncHub
-	{
-		public ILogger Logger { get; }
-
-		public ConcurrentDictionary<BlockSyncBehaviour, Node> Behaviours { get; }
-		public BlockingCollection<HubBroadcastItem> BroadcastBlocks { get; }
-		public BlockingCollection<HubBroadcastItem> ReceiveBlocks { get; }
-
-		private readonly List<Task> runningTasks;
-		private readonly ChainIndex chainIndex;
-
-		public BlockSyncHub(Context context, ILoggerFactory loggerFactory) 
-		{
-			this.Context = context;
-			this.chainIndex = context.ChainIndex;
-			this.runningTasks = new List<Task>();
-			this.Behaviours = new ConcurrentDictionary<BlockSyncBehaviour, Node>();
-			this.BroadcastBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
-			this.ReceiveBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
-			this.Logger = loggerFactory.CreateLogger<BlockSyncHub>();
-
-		}
-
-		public Context Context { get; set; }
-
-		public BlockSyncHub StartBroadcasting()
-		{
-			// move this to be its own background worker
-
-			var task = Task.Factory.StartNew(() =>
-			{
-				try
-				{
-					while (!this.Context.DownloadMode && !this.Context.CancellationToken.IsCancellationRequested)
-					{
-						// take from the blocking collection 
-						var broadcastItem = this.BroadcastBlocks.Take(this.Context.CancellationToken);
-
-						// if no behaviours are found we wait for behaviours
-						// this is so we don't lose the block
-						while (this.Behaviours.Empty())
-							this.Context.CancellationToken.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
-
-						foreach (var behaviour in this.Behaviours)
-						{
-							// check if the behaviour is not the one that 
-							// queue the block, in that case we don't broadcast back. 
-							if (!behaviour.Key.Equals(broadcastItem.Behaviour))
-								behaviour.Key.Broadcast(broadcastItem.Block);
-						}
-					}
-				}
-				catch (OperationCanceledException)
-				{
-					// we are done here
-				}
-
-				// the hub is global so it listens to the 
-				// global cancelation token 
-			}, this.Context.CancellationToken, TaskCreationOptions.LongRunning, this.Context.TaskScheduler);
-
-
-			this.runningTasks.Add(task);
-			return this;
-		}
-
-		public void AskBlocks(IEnumerable<uint256> blockids)
-		{
-			var invs = blockids.Select(blockid => new InventoryVector()
-			{
-				Type = InventoryType.MSG_BLOCK,
-				Hash = blockid
-			});
-
-			var message = new GetDataPayload(invs.ToArray());
-
-			// for now try to ask 3 nodes for blocks
-			foreach (var behaviour in Behaviours.Values.Take(3))
-				behaviour?.SendMessage(message);
-		}
-	}
-
 	/// <summary>
 	/// The block sync behaviour is responsible for listening to blocks on the network 
 	/// And serving any required functionality to the hub
@@ -126,12 +28,18 @@ namespace StratisMinter.Behaviour
 
 		public bool CanRespondToBlockPayload { get; set; }
 
+		public bool CanRespondToHeadersPayload { get; set; }
+
+		public bool CanRespondToInvPayload { get; set; }
+
 		public BlockSyncBehaviour(BlockSyncHub hub)
 		{
 			this.blockSyncHub = hub;
 			this.cancellation = CancellationTokenSource.CreateLinkedTokenSource(new[] { this.blockSyncHub.Context.CancellationToken });
 			this.CanRespondToGetBlocksPayload = true;
 			this.CanRespondToGetBlocksPayload = true;
+			this.CanRespondToHeadersPayload = true;
+			this.CanRespondToInvPayload = true;
 		}
 
 		protected override void AttachCore()
@@ -144,16 +52,24 @@ namespace StratisMinter.Behaviour
 
 		private void AttachedNode_MessageReceived(Node node, IncomingMessage message)
 		{
-			this.blockSyncHub.Logger.LogInformation(
-				$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
+			//this.blockSyncHub.Logger.LogInformation(
+			//	$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
 
-			 var getBlocksPayload = message.Message.Payload as GetBlocksPayload;
+			var getBlocksPayload = message.Message.Payload as GetBlocksPayload;
 			if (this.CanRespondToGetBlocksPayload && getBlocksPayload != null)
 				this.RespondToGetBlocksPayload(node, getBlocksPayload);
 
 			var blockPayload = message.Message.Payload as BlockPayload;
 			if (this.CanRespondToBlockPayload && blockPayload != null)
 				this.RespondToBlockPayload(node, blockPayload);
+
+			var headersPayload = message.Message.Payload as HeadersPayload;
+			if (this.CanRespondToHeadersPayload && headersPayload != null)
+				this.RespondToHeadersPayload(node, headersPayload);
+
+			var invPayload = message.Message.Payload as InvPayload;
+			if (this.CanRespondToInvPayload && invPayload != null)
+				this.RespondToInvPayload(node, invPayload);
 		}
 
 		private void RespondToGetBlocksPayload(Node node, GetBlocksPayload getBlocksPayload)
@@ -168,6 +84,40 @@ namespace StratisMinter.Behaviour
 		private void RespondToBlockPayload(Node node, BlockPayload blockPayload)
 		{
 			this.blockSyncHub.ReceiveBlocks.Add(new HubBroadcastItem {Block = blockPayload.Object, Behaviour = this});
+		}
+
+		private void RespondToHeadersPayload(Node node, HeadersPayload headersPayload)
+		{
+			var message = this.CreateGetDataPayload(headersPayload.Headers.Select(item => item.GetHash()));
+
+			if (message.Inventory.Any())
+				node.SendMessage(message);
+		}
+
+		private void RespondToInvPayload(Node node, InvPayload invPayload)
+		{
+			var message = this.CreateGetDataPayload(invPayload.Inventory.Where(inv => inv.Type == InventoryType.MSG_BLOCK).Select(item => item.Hash));
+
+			if (message.Inventory.Any())
+				node.SendMessage(message);
+		}
+
+		private GetDataPayload CreateGetDataPayload(IEnumerable<uint256> hashes)
+		{
+			var message = new GetDataPayload();
+			foreach (var hash in hashes)
+			{
+				if (this.blockSyncHub.ChainIndex.GetBlock(hash) == null)
+				{
+					message.Inventory.Add(new InventoryVector()
+					{
+						Type = InventoryType.MSG_BLOCK,
+						Hash = hash
+					});
+				}
+			}
+
+			return message;
 		}
 
 		public void Broadcast(Block block)
@@ -208,7 +158,9 @@ namespace StratisMinter.Behaviour
 			return new BlockSyncBehaviour(this.blockSyncHub)
 			{
 				CanRespondToBlockPayload = this.CanRespondToBlockPayload,
-				CanRespondToGetBlocksPayload = this.CanRespondToGetBlocksPayload
+				CanRespondToGetBlocksPayload = this.CanRespondToGetBlocksPayload,
+				CanRespondToHeadersPayload = this.CanRespondToHeadersPayload,
+				CanRespondToInvPayload = this.CanRespondToInvPayload
 			};
 		}
     }

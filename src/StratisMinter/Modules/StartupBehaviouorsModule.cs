@@ -27,7 +27,9 @@ namespace StratisMinter.Modules
 			var blockSyncBehaviour = new BlockSyncBehaviour(this.blockReceiver.BlockSyncHub)
 			{
 				CanRespondToBlockPayload = false,
-				CanRespondToGetBlocksPayload = false
+				CanRespondToGetBlocksPayload = false,
+				CanRespondToInvPayload = false,
+				CanRespondToHeadersPayload = false
 			};
 			this.Context.ConnectionParameters.TemplateBehaviors.Add(blockSyncBehaviour);
 		}

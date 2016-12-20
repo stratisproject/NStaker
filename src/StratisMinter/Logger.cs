@@ -13,7 +13,7 @@ namespace StratisMinter
 {
 	public class LogFilter
 	{
-		public bool Log { get; set; }
+		public bool Log { get; set; } = true;
 
 		public Func<string, LogLevel, bool> Filter => this.OnFilter;
 
@@ -41,6 +41,9 @@ namespace StratisMinter
 				var key = Console.ReadKey();
 				if (key.Key == ConsoleKey.Spacebar)
 					this.logFilter.Log = !this.logFilter.Log;
+
+				if((key.KeyChar == 'Q') || (key.KeyChar == 'q'))
+					this.Context.CancellationTokenSource.Cancel();
 			}
 		}
 	}
@@ -60,14 +63,12 @@ namespace StratisMinter
 
 	    protected override void Work()
 	    {
-
 		    while (this.NotCanceled())
 		    {
 			    if (!this.logFilter.Log)
 			    {
-				    Console.Clear();
+					Console.Clear();
 					Console.Write(BuildOutput());
-					//this.logger.LogInformation(BuildOutput());
 			    }
 			    this.Cancellation.Token.WaitHandle.WaitOne(1000);
 		    }
@@ -76,17 +77,19 @@ namespace StratisMinter
 	    protected string BuildOutput()
 	    {
 			StringBuilder builder = new StringBuilder();
+			builder.AppendLine("Press 'Q' to quite.");
+			builder.AppendLine("Press 'Spacebar' to switch views.");
 			builder.AppendLine("==== Stats ====");
 			builder.AppendLine($"Elapsed = \t\t {this.Context.Counter.Elapsed:c}");
-			builder.AppendLine($"ConnectedNodes = \t\t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
+			builder.AppendLine($"ConnectedNodes = \t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
 			builder.AppendLine($"HeaderTip = \t\t {this.context.ChainIndex?.Tip?.Height}");
 			builder.AppendLine($"IndexedBlock = \t\t {this.context.ChainIndex?.LastIndexedBlock?.Height}");
 		    if (this.context.DownloadMode)
 		    {
-			    builder.AppendLine("==== Perf ====");
+			    builder.AppendLine("==== Download Perf ====");
 			    builder.AppendLine($"CurrentBlock = \t\t {this.Context.Counter.BlockCount}");
-			    builder.AppendLine($"PendingBlocks = \t\t {this.Context.Counter.PendingBlocks}");
-			    builder.AppendLine($"Blocks = \t\t\t {(this.Context.Counter.Elapsed.TotalMilliseconds/this.Context.Counter.BlockCount):0.0000} ms/block");
+			    builder.AppendLine($"PendingBlocks = \t {this.Context.Counter.PendingBlocks}");
+			    builder.AppendLine($"Blocks = \t\t {(this.Context.Counter.Elapsed.TotalMilliseconds/this.Context.Counter.BlockCount):0.0000} ms/block");
 		    }
 		    return builder.ToString();
 		}

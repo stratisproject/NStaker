@@ -58,11 +58,17 @@ namespace StratisMinter.Services
 					behavior.CanSync = true;
 
 			foreach (var behavior in this.Context.ConnectionParameters.TemplateBehaviors.OfType<BlockSyncBehaviour>())
+			{
 				behavior.CanRespondToBlockPayload = true;
+				behavior.CanRespondToInvPayload = true;
+			}
 
 			foreach (var node in this.NodesGroup.ConnectedNodes)
 				foreach (var behavior in node.Behaviors.OfType<BlockSyncBehaviour>())
+				{
 					behavior.CanRespondToBlockPayload = true;
+					behavior.CanRespondToInvPayload = true;
+				}
 		}
 
 		public void StartConnecting()

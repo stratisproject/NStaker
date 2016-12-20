@@ -11,12 +11,14 @@ namespace StratisMinter.Modules
 		private readonly ILogger logger;
 		private readonly ChainService chainSyncService;
 		private readonly NodeConnectionService nodeConnectionService;
+		private readonly LogFilter logFilter;
 
-		public StartupCalcPosModule(Context context, ChainService chainSyncService, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory) : base(context)
+		public StartupCalcPosModule(Context context, ChainService chainSyncService, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
 		{
 			this.ChainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
 			this.nodeConnectionService = nodeConnectionService;
+			this.logFilter = logFilter;
 			this.logger = loggerFactory.CreateLogger<StartupCalcPosModule>();
 		}
 
@@ -32,6 +34,8 @@ namespace StratisMinter.Modules
 			// sync the headers and save to disk
 			this.logger.LogInformation("Save ChainHeaders to disk...");
 			this.chainSyncService.SaveToDisk();
+
+			this.logFilter.Log = false;
 		}
 	}
 }

@@ -31,9 +31,6 @@ namespace StratisMinter.Services
 		// listen to Inv block messages and append them to the chain
 		public override void Execute()
 		{
-			// this is a hack to start the loger before its time
-			this.logger.Execute();
-
 			// enter in to download mode
 			this.Context.DownloadMode = true;
 
@@ -256,7 +253,7 @@ namespace StratisMinter.Services
 					if(!this.chainIndex.ValidateAndAddBlock(nextBlock))
 						throw new InvalidBlockException();
 
-					//this.logger.LogInformation($"Added block {next.Height} hash {next.HashBlock}");
+					this.logger.LogInformation($"Added block {next.Height} hash {next.HashBlock}");
 
 					this.context.Counter.SetBlockCount(next.Height);
 					this.context.Counter.AddBlocksCount(1);
