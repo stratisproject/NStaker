@@ -85,13 +85,10 @@ namespace StratisMinter.Services
 
 					// how many times have we tried to processes this block
 					// if a threshold is reached just discard it
-					if (receivedBlock.Attempts > 3)
-						continue;
-
-					// block is not next in line send it back to the list
-					if (this.BlockSyncHub.ReceiveBlocks.TryAdd(receivedBlock))
-						receivedBlock.Attempts++;
-
+					if (receivedBlock.Attempts <= 3)
+						if (this.BlockSyncHub.ReceiveBlocks.TryAdd(receivedBlock))
+							receivedBlock.Attempts++;
+					
 					continue;
 				}
 
@@ -135,8 +132,9 @@ namespace StratisMinter.Services
 
 				// push the block back in the queue to be 
 				// reprocessed with the header set in the tip
-				if (this.BlockSyncHub.ReceiveBlocks.TryAdd(receivedBlock))
-					receivedBlock.Attempts++;
+				if (receivedBlock.Attempts <= 3)
+					if (this.BlockSyncHub.ReceiveBlocks.TryAdd(receivedBlock))
+						receivedBlock.Attempts++;
 			}
 		}
 	}
