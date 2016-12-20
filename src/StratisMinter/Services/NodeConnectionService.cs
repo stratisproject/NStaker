@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
@@ -27,10 +28,12 @@ namespace StratisMinter.Services
 		// when a node is found a behaviour is created that is in charge 
 		// of notifying the parent (NodesGroup) when the node got disconnected 
 		public NodesGroup NodesGroup { get; }
+		private readonly ILogger logger;
 
-		public NodeConnectionService(Context context) : base(context)
+		public NodeConnectionService(Context context, ILoggerFactory loggerFactory) : base(context)
 		{
 			this.NodesGroup = new NodesGroup(this.Context.Network);
+			this.logger = loggerFactory.CreateLogger<NodeConnectionService>();
 
 			// some config settings
 			this.NodesGroup.MaximumNodeConnection = this.Context.Config.MaximumNodeConnection;
@@ -80,11 +83,15 @@ namespace StratisMinter.Services
 		{
 			if (!trusetd)
 			{
-				// todo: add some randomness 
+				while (this.NodesGroup.ConnectedNodes.Empty())
+				{
+					this.logger.LogInformation("Waiting for connected nodes..");
+					this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+				}
+
 				var node  = this.NodesGroup.ConnectedNodes.FirstOrDefault();
 
-				if (node == null)
-					throw new NoConnectedNodesException("no connected nodes");
+				return node;
 			}
 
 			if (this.Context.Config.TrustedNodes.Empty())
@@ -103,7 +110,6 @@ namespace StratisMinter.Services
 		protected override void Work()
 		{
 			this.EnableSyncing();
-			this.StartConnecting();
 			this.Cancellation.Token.WaitHandle.WaitOne(TimeSpanExtention.Infinite);
 		}
 	}

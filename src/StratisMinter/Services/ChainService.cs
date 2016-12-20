@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using nStratis.Protocol.Behaviors;
 using StratisMinter.Base;
@@ -26,7 +27,7 @@ namespace StratisMinter.Services
 			// download all block headers up to current tip
 			// this will loop until complete using a new node
 			// if the current node got disconnected 
-			var node = this.nodeConnectionService.GetNode(true);
+			var node = this.nodeConnectionService.GetNode(this.Context.Config.TrustedNodes.Any());
 			node.SynchronizeChain(ChainIndex, null, this.Context.CancellationToken);
 		}
 

@@ -196,7 +196,7 @@ namespace StratisMinter.Services
 
 		private DownloadFetcher CreateFetcher()
 		{
-			var node = this.nodeConnectionService.GetNode(true);
+			var node = this.nodeConnectionService.GetNode(this.context.Config.TrustedNodes.Any());
 			var fetcher = new DownloadFetcher(this.context, this, node).Processes();
 			this.Fetchers.TryAdd(fetcher, node);
 			return fetcher;

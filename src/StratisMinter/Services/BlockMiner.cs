@@ -1,4 +1,5 @@
 ﻿using System;
+using nStratis;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 using StratisMinter.Store;
@@ -28,6 +29,26 @@ namespace StratisMinter.Services
 			{
 				this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
 			}
+		}
+
+		private void CheckState(Block block)
+		{
+			
+		}
+
+		private void CheckWork(Block block)
+		{
+			
+		}
+
+		private void IncrementExtraNonce()
+		{
+			
+		}
+
+		private Block CreateNewBlock()
+		{
+			return null;
 		}
 	}
 }
