@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using nStratis.Protocol.Behaviors;
@@ -52,11 +53,14 @@ namespace StratisMinter.Services
 
 		protected override void Work()
 		{
-			// do nothing here for now we use this
-			// class to manage the ChainIndex 
-			// (or manage its dispose work to be accurate)
+			while (this.NotCanceled())
+			{
+				this.WaitForDownLoadMode();
 
-			this.Cancellation.Token.WaitHandle.WaitOne(TimeSpanExtention.Infinite);
+				this.SaveToDisk();
+
+				this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(5));
+			}
 		}
 	}
 }

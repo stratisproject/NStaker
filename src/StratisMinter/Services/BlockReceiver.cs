@@ -129,21 +129,15 @@ namespace StratisMinter.Services
 				// the current chain 
 				if (newtip.Height > this.chainIndex.Tip.Height)
 				{
-					// validate the block 
-					if (this.chainIndex.ValidateNewBlock(receivedBlock.Block, newtip))
-					{
-						// if the block is valid set the new tip.
-						this.chainIndex.SetTip(newtip);
-						this.logger.LogInformation($"Added new block - height: { newtip.Height } hash: { receivedBlockHash }");
-					}
-					else
-					{
-						// maybe an untrusted node?
-						this.logger.LogInformation($"Invalid block : { newtip.HashBlock }");
-					}
+					// if the block is valid set the new tip.
+					this.chainIndex.SetTip(newtip);
 				}
-			}
 
+				// push the block back in the queue to be 
+				// reprocessed with the header set in the tip
+				if (this.BlockSyncHub.ReceiveBlocks.TryAdd(receivedBlock))
+					receivedBlock.Attempts++;
+			}
 		}
 	}
 }

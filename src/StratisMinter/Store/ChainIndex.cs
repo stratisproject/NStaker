@@ -76,7 +76,7 @@ namespace StratisMinter.Store
 			return BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
 		}
 
-		public bool ValidateNewBlock(Block block, ChainedBlock chainedBlock)
+		public bool ValidateAndAddNewBlock(Block block, ChainedBlock chainedBlock)
 		{
 			// todo: combine this method with the other two 
 			if (chainedBlock == null)
