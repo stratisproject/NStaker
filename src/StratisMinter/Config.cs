@@ -14,6 +14,8 @@ namespace StratisMinter
 
 	    public int MaxBlocksInMemory { get; set; } = 20000;
 
+	    public int ConnectedNodesToStake { get; set; } = 3;
+
 		// use the specified ip to download the blockchain from
 		// in cases where we know a trusted node we can specify it here
 		// once blockchain is downloaded blocks will be downloaded from any node

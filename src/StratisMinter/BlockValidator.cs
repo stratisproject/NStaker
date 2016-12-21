@@ -44,6 +44,26 @@ namespace StratisMinter
 		private static long FutureDriftV2(long nTime) { return nTime + 128 * 60 * 60; }
 		private static long FutureDrift(long nTime, int nHeight) { return IsProtocolV2(nHeight) ? FutureDriftV2(nTime) : FutureDriftV1(nTime); }
 
+		public static uint GetPastTimeLimit(ChainedBlock chainedBlock)
+		{
+			if (IsProtocolV2(chainedBlock.Height))
+				return chainedBlock.Header.Time;
+			else
+				return GetMedianTimePast(chainedBlock);
+		}
+
+		private const int MedianTimeSpan = 11;
+
+		public static uint GetMedianTimePast(ChainedBlock chainedBlock)
+		{
+			var soretedList = new SortedSet<uint>();
+			var pindex = chainedBlock;
+			for (int i = 0; i < MedianTimeSpan && pindex != null; i++, pindex = pindex.Previous)
+				soretedList.Add(pindex.Header.Time);
+
+			return (soretedList.First() - soretedList.Last())/2;
+		}
+
 		// find last block index up to index
 		private static ChainedBlock GetLastBlockIndex(ChainedBlock index, bool proofOfStake)
 		{
