@@ -54,6 +54,7 @@ namespace StratisMinter
 				.AddSingleton<DownloadManager>()
 				.AddSingleton<ChainIndex>()
 				.AddSingleton<LogFilter>()
+                .AddScoped<WalletService>()
 				// build
 				.BuildServiceProvider();
 

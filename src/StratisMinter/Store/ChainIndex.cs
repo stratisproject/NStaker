@@ -12,8 +12,8 @@ namespace StratisMinter.Store
 	public class ChainIndex : ConcurrentChain , IBlockRepository, 
 		IBlockTransactionMapStore, ITransactionRepository
 	{
-		private BlockStore store;
-		private IndexedBlockStore indexStore;
+		private StakeBlockStore store;
+		private IndexedStakeBlockStore indexStore;
 		private BlockMemoryStore blockMemoryStore;
 
 		public TransactionToBlockItemIndex TransactionIndex { get; private set; }
@@ -22,8 +22,8 @@ namespace StratisMinter.Store
 		public void Initialize(Context context)
 		{
 			// todo: create a repository that persists index data to file
-			this.store = new BlockStore(context.Config.FolderLocation, context.Network);
-			this.indexStore = new IndexedBlockStore(new InMemoryNoSqlRepository(), store);
+			this.store = new StakeBlockStore(context.Config.FolderLocation, context.Network);
+			this.indexStore = new IndexedStakeBlockStore(new InMemoryNoSqlRepository(), store);
 			this.TransactionIndex = new TransactionToBlockItemIndex(context);
 			this.blockMemoryStore = new BlockMemoryStore(context);
 		}
@@ -88,7 +88,7 @@ namespace StratisMinter.Store
 
 		public void AddBlock(Block block, ChainedBlock chainedBlock)
 		{
-			this.indexStore.Put(block);
+		    this.indexStore.Put(new StakeBlock {Block = block, Stake = block.Header.PosParameters});
 			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
 			this.LastIndexedBlock = chainedBlock;
 			this.TransactionIndex.Add(block);
@@ -104,7 +104,7 @@ namespace StratisMinter.Store
 			if (!this.ValidateBlock(block, out chainedBlock))
 				return false;
 			
-			this.indexStore.Put(block);
+			this.indexStore.Put(new StakeBlock { Block = block, Stake = block.Header.PosParameters });
 			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
 			this.LastIndexedBlock = chainedBlock;
 			this.TransactionIndex.Add(block);
@@ -114,7 +114,7 @@ namespace StratisMinter.Store
 
 		public Block GetFullBlock(uint256 blockId)
 		{
-			return this.blockMemoryStore.Get(blockId, () => this.indexStore.Get(blockId));
+			return this.blockMemoryStore.Get(blockId, () => this.indexStore.Get(blockId)?.Block);
 		}
 
 		public ChainedBlock FindLastIndexedBlock()
