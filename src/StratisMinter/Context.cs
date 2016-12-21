@@ -49,20 +49,5 @@ namespace StratisMinter
 		public IServiceProvider Service { get; set; }
 		public TaskScheduler TaskScheduler { get; private set; }
 		public bool DownloadMode { get; set; }
-
-		public override string ToString()
-		{
-			StringBuilder builder = new StringBuilder();
-			builder.AppendLine("==== Perf ====");
-			builder.AppendLine($"Elapsed = \t\t {Counter.Elapsed:c}");
-			builder.AppendLine($"CurrentBlock = \t\t {Counter.BlockCount}");
-			builder.AppendLine($"PendingBlocks = \t\t {Counter.PendingBlocks}");
-			builder.AppendLine($"Blocks = \t\t\t {(Counter.Elapsed.TotalMilliseconds/Counter.BlockCount):0.0000} ms/block");
-			builder.AppendLine("==== Stats ====");
-			builder.AppendLine($"ConnectedNodes = \t\t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
-			builder.AppendLine($"HeaderTip = \t\t {this.ChainIndex?.Tip?.Height}");
-			builder.AppendLine($"IndexedBlock = \t\t {this.ChainIndex?.LastIndexedBlock?.Height}");
-			return builder.ToString();
-		}
 	}
 }

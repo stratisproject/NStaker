@@ -167,7 +167,7 @@ namespace StratisMinter.Store
 		}
 
 		private readonly object setTipLocker = new object();
-		public AutoResetEvent TipRecetEvent = new AutoResetEvent(false);
+		public AutoResetEvent TipChangedSignal = new AutoResetEvent(false);
 
 		public override ChainedBlock SetTip(ChainedBlock block)
 		{
@@ -211,7 +211,7 @@ namespace StratisMinter.Store
 
 				// signal to the block syncer that a new
 				// tip was set so the blocks will update
-				TipRecetEvent.Set();
+				TipChangedSignal.Set();
 
 				return oldTip;
 			}

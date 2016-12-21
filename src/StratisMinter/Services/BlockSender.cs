@@ -53,7 +53,7 @@ namespace StratisMinter.Services
 
 				// wait for the chain index to signal a new tip
 				// or check after an interval has passed
-				this.chainIndex.TipRecetEvent.WaitOne(TimeSpan.FromMinutes(10));
+				this.chainIndex.TipChangedSignal.WaitOne(TimeSpan.FromMinutes(10));
 				//this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
 			}
 		}

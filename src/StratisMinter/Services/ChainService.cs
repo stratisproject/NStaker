@@ -20,7 +20,7 @@ namespace StratisMinter.Services
 			this.ChainIndex = this.Context.ChainIndex;
 			this.nodeConnectionService = nodeConnectionService;
 			this.logger = loggerFactory.CreateLogger<ChainService>();
-			this.Disposables.Add(this.ChainIndex.TipRecetEvent);
+			this.Disposables.Add(this.ChainIndex.TipChangedSignal);
 		}
 
 		public void SyncChain()

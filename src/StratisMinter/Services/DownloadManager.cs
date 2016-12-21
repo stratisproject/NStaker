@@ -220,6 +220,7 @@ namespace StratisMinter.Services
 			var askBlockId = currentBlock.HashBlock;
 			var blockCountToAsk = 100;
 			var saveIndex = 0;
+			var attempts = 0;
 
 			while (true)
 			{
@@ -274,6 +275,17 @@ namespace StratisMinter.Services
 				}
 				else
 				{
+					attempts++;
+					if (attempts == 100)
+					{
+						// after an attempt interval reset the ask index
+						// in case a node got disconnected we start from 
+						// the last syned block
+						askBlockId = currentBlock.HashBlock;
+						attempts = 0;
+						continue;
+					}
+
 					// wait a bit
 					this.context.CancellationToken.WaitHandle.WaitOne(1000);
 				}
