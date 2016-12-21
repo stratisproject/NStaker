@@ -81,6 +81,8 @@ namespace StratisMinter.Base
 					catch (Exception ex)
 					{
 						// unhandled exception
+						this.Context.GeneralException = ex;
+						this.Context.CancellationTokenSource.Cancel();
 					}
 
 				}, this.Cancellation.Token, TaskCreationOptions.LongRunning, this.Context.TaskScheduler);

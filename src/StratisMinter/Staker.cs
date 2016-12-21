@@ -95,6 +95,12 @@ namespace StratisMinter
 
 			foreach (var service in this.services.GetServices<IDisposable>())
 				service.Dispose();
+
+		    if (this.context.GeneralException != null)
+		    {
+			    Console.WriteLine(this.context.GeneralException);
+			    Console.ReadKey();
+		    }
 		}
 	}
 }

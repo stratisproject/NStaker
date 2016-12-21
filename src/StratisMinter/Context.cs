@@ -49,5 +49,7 @@ namespace StratisMinter
 		public IServiceProvider Service { get; set; }
 		public TaskScheduler TaskScheduler { get; private set; }
 		public bool DownloadMode { get; set; }
+
+		public Exception GeneralException { get; set; }
 	}
 }

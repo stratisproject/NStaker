@@ -12,7 +12,7 @@ namespace StratisMinter.Store
 {
     // An index to store and append blocks and Proof Of Stake parameters
     // This combines both the block and the PosParams when persisting to disk POS
-    // Avoiding storing the PosParams in the header reduces comnplexity of maintaining
+    // Avoiding storing the PosParams in the header reduces complexity of maintaining
     // the POS proof and modifiers in sync with the stored blocks in disk
     public class IndexedStakeBlockStore : IndexedStore<StoredStakeBlock, StakeBlock>, IBlockProvider
     {
