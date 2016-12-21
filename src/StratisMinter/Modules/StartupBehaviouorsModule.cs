@@ -14,7 +14,7 @@ namespace StratisMinter.Modules
 			this.blockReceiver = blockReceiver;
 		}
 
-		public override int Priority => 9;
+		public override int Priority => 8;
 
 		public override void Execute()
 		{

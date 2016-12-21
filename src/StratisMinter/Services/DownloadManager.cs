@@ -185,7 +185,7 @@ namespace StratisMinter.Services
 			this.Fetchers.Keys.First().Fetch(downloadRequests);
 		}
 
-		private Block GetBlock(uint256 blockid)
+		private Block GetNextPendingBlock(uint256 blockid)
 		{
 			Block block = null;
 			this.ReceivedBlocks.TryRemove(blockid, out block);
@@ -216,10 +216,10 @@ namespace StratisMinter.Services
 				return;
 
 			this.logger.LogInformation($"Download starting at {currentBlock.Height}");
+			this.context.Counter.IBDStart();
 			this.Deplete();
 			var askBlockId = currentBlock.HashBlock;
 			var blockCountToAsk = 100;
-			var saveIndex = 0;
 			var attempts = 0;
 
 			while (true)
@@ -241,7 +241,7 @@ namespace StratisMinter.Services
 					break;
 
 				// get the next block to validate
-				var nextBlock = this.GetBlock(next.HashBlock);
+				var nextBlock = this.GetNextPendingBlock(next.HashBlock);
 				if (nextBlock != null)
 				{
 					// for each block validate it
@@ -261,17 +261,6 @@ namespace StratisMinter.Services
 
 					// update current block
 					currentBlock = next;
-					saveIndex++;
-
-					if (saveIndex == 5000)
-					{
-						// persist any headers to disk 
-						// the pos params are being modified as 
-						// blocks are received and recalculating the pos
-						// params is a more expensive operation then saving to disk 
-						this.chainSyncService.SaveToDisk(true);
-						saveIndex = 0;
-					}
 				}
 				else
 				{
@@ -280,7 +269,7 @@ namespace StratisMinter.Services
 					{
 						// after an attempt interval reset the ask index
 						// in case a node got disconnected we start from 
-						// the last syned block
+						// the last indexed block
 						askBlockId = currentBlock.HashBlock;
 						attempts = 0;
 						continue;

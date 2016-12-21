@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using Microsoft.Extensions.Logging;
 using nStratis;
 using nStratis.Protocol;
 using nStratis.Protocol.Behaviors;
@@ -8,20 +9,26 @@ namespace StratisMinter.Modules
 {
 	public class StartupAddressManagerModule : StartupModule
 	{
-	
-		public StartupAddressManagerModule(Context context) : base(context)
+		private ILogger logger;
+
+		public StartupAddressManagerModule(Context context, ILoggerFactory loggerFactory) : base(context)
 		{
+			this.logger = loggerFactory.CreateLogger<StartupAddressManagerModule>();
+
 		}
 
-		public override int Priority => 9;
+		public override int Priority => 7;
 
 		public override void Execute()
 		{
 			if (File.Exists(this.Context.Config.File("peers.dat")))
 			{
+				this.logger.LogInformation("Loading address manager from disk...");
 				this.Context.AddressManager = AddressManager.LoadPeerFile(this.Context.Config.File("peers.dat"), this.Context.Network);
 				return;
 			}
+
+			this.logger.LogInformation("Downloading addresses from peers...");
 
 			// the ppers file is empty so we load new peers
 			// peers are then saved to peer.dat file so next time load is faster

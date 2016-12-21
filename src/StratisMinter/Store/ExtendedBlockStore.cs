@@ -100,7 +100,11 @@ namespace StratisMinter.Store
         {
             StoredStakeBlock storedStakeBlock = new StoredStakeBlock(Network, pos);
             storedStakeBlock.ReadWrite(stream, false);
-            return storedStakeBlock;
+			
+			// set the POS values in to the block header
+	        storedStakeBlock.Item.Block.Header.PosParameters = storedStakeBlock.Item.Stake;
+
+			return storedStakeBlock;
         }
 
         protected override StoredStakeBlock CreateStoredItem(StakeBlock item, DiskBlockPos position)

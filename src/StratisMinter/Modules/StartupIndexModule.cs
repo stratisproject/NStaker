@@ -9,14 +9,12 @@ namespace StratisMinter.Modules
 	{
 		public ChainIndex ChainIndex { get; }
 		private readonly ILogger logger;
-		private readonly ChainService chainSyncService;
-		private readonly NodeConnectionService nodeConnectionService;
+		private readonly LogFilter logFilter;
 
-		public StartupIndexModule(Context context, ChainService chainSyncService, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory) : base(context)
+		public StartupIndexModule(Context context,ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
 		{
 			this.ChainIndex = context.ChainIndex;
-			this.chainSyncService = chainSyncService;
-			this.nodeConnectionService = nodeConnectionService;
+			this.logFilter = logFilter;
 			this.logger = loggerFactory.CreateLogger<StartupIndexModule>();
 		}
 
@@ -31,11 +29,8 @@ namespace StratisMinter.Modules
 			// load transaction indexes
 			this.logger.LogInformation("Load transaction index store...");
 			this.ChainIndex.TransactionIndex.Load();
-			
-			// now that transactions are appended and saved on each block
-			// no need to reload the index anymore
-			//this.logger.LogInformation("ReIndex transaction store...");
-			//this.ChainIndex.TransactionIndex.ReIndex(this.ChainIndex);
+
+			this.logFilter.Log = false;
 		}
 	}
 }

@@ -34,30 +34,6 @@ namespace StratisMinter.Store
 			this.LastIndexedBlock = this.FindLastIndexedBlock();
 		}
 
-		public void PosCatchup()
-		{
-			// ensure chain headers POS params are at the 
-			// same level of the chain index
-			var pindex = this.Tip;
-			var stack = new Stack<ChainedBlock>();
-			while (pindex.Previous != null && !pindex.Header.PosParameters.IsSet())
-			{
-				stack.Push(pindex);
-				pindex = pindex.Previous;
-			}
-			while (stack.Any())
-			{
-				pindex = stack.Pop();
-
-				var block = this.GetFullBlock(pindex.HashBlock);
-				if (block == null)
-					break;
-
-				if (!this.ValidateBlock(block))
-					throw new InvalidBlockException();
-			}
-		}
-
 		public bool ValidateBlock(Block block)
 		{
 			ChainedBlock chainedBlock;
@@ -82,6 +58,16 @@ namespace StratisMinter.Store
 
 			if (!block.Header.PosParameters.IsSet())
 				chainedBlock.Header.PosParameters = block.SetPosParams();
+
+			// ensure the previous chainedBlock has
+			// the POS parameters set if not load its 
+			// block and set the pos params
+			var prevChained = chainedBlock.Previous;
+			if (!prevChained.Header.PosParameters.IsSet())
+			{
+				var prevBlock = this.GetFullBlock(prevChained.HashBlock);
+				prevChained.Header.PosParameters = prevBlock.Header.PosParameters;
+			}
 
 			return BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
 		}
@@ -173,33 +159,12 @@ namespace StratisMinter.Store
 			// is needed if the tip is set by more then one node (thread)
 			lock (setTipLocker)
 			{
-				// its probably wise to lock this operation
-				// in case another thread kicks in while copying POS params
 				var oldTip = base.SetTip(block);
-
-				// when many nodes are modifying the chain
-				// the POS parameters are getting overridden
-				// that because the headers don't have the 
-				// POS parameters from the network but they are
-				// calculated when validating a block
 
 				if (this.LastIndexedBlock != null)
 				{
-					var tipdindex = this.LastIndexedBlock;
 					var pindex = this.Tip.FindAncestorOrSelf(this.LastIndexedBlock.HashBlock);
-
-					if (pindex != null)
-					{
-						// iterate over old POS params and copy
-						//  over to the new instances on the chain
-						while (!pindex.Header.PosParameters.IsSet())
-						{
-							pindex.Header.PosParameters = tipdindex.Header.PosParameters;
-							pindex = pindex.Previous;
-							tipdindex = tipdindex.Previous;
-						}
-					}
-					else
+					if (pindex == null)
 					{
 						// a reorg may have occurred we need to find
 						// and set the last index tip 

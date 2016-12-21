@@ -36,7 +36,7 @@ namespace StratisMinter
 				// ShutdownModule
 				.AddSingleton<StartupModule, StartupAddressManagerModule>()
 				.AddSingleton<StartupModule, StartupBehaviouorsModule>()
-				.AddSingleton<StartupModule, StartupCalcPosModule>()
+				.AddSingleton<StartupModule, StartupConnectionModule>()
 				.AddSingleton<StartupModule, StartupChainModule>()
 				.AddSingleton<StartupModule, StartupIndexModule>()
 				// BackgroundWorkItem

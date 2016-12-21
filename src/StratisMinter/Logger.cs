@@ -89,7 +89,7 @@ namespace StratisMinter
 			    builder.AppendLine("==== Download Perf ====");
 			    builder.AppendLine($"CurrentBlock = \t\t {this.Context.Counter.BlockCount}");
 			    builder.AppendLine($"PendingBlocks = \t {this.Context.Counter.PendingBlocks}");
-			    builder.AppendLine($"Blocks = \t\t {(this.Context.Counter.Elapsed.TotalMilliseconds/this.Context.Counter.BlockCount):0.0000} ms/block");
+			    builder.AppendLine($"Blocks = \t\t {(this.Context.Counter.IBDElapsed.TotalMilliseconds/this.Context.Counter.BlockCount):0.0000} ms/block");
 		    }
 		    return builder.ToString();
 		}

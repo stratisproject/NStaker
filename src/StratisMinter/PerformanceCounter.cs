@@ -14,6 +14,14 @@ namespace StratisMinter
 		}
 
 		DateTime start;
+		DateTime ibdstart;
+
+		public void IBDStart()
+		{
+			this.ibdstart = DateTime.UtcNow;
+			this.blocksCount = 0;
+		}
+
 		public DateTime Start
 		{
 			get
@@ -26,6 +34,14 @@ namespace StratisMinter
 			get
 			{
 				return DateTime.UtcNow - Start;
+			}
+		}
+
+		public TimeSpan IBDElapsed
+		{
+			get
+			{
+				return DateTime.UtcNow - ibdstart;
 			}
 		}
 

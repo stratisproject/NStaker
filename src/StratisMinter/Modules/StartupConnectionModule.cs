@@ -5,7 +5,7 @@ using StratisMinter.Store;
 
 namespace StratisMinter.Modules
 {
-	public class StartupCalcPosModule : StartupModule
+	public class StartupConnectionModule : StartupModule
 	{
 		public ChainIndex ChainIndex { get; }
 		private readonly ILogger logger;
@@ -13,29 +13,22 @@ namespace StratisMinter.Modules
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly LogFilter logFilter;
 
-		public StartupCalcPosModule(Context context, ChainService chainSyncService, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
+		public StartupConnectionModule(Context context, ChainService chainSyncService, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
 		{
 			this.ChainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
 			this.nodeConnectionService = nodeConnectionService;
 			this.logFilter = logFilter;
-			this.logger = loggerFactory.CreateLogger<StartupCalcPosModule>();
+			this.logger = loggerFactory.CreateLogger<StartupConnectionModule>();
 		}
 
-		public override int Priority => 12;
+		public override int Priority => 9;
 
 		public override void Execute()
 		{
-			// recalculate any pos parameters that
-			// may have bene missed
-			this.logger.LogInformation("Catching up with POS calculations...");
-			this.ChainIndex.PosCatchup();
-
 			// sync the headers and save to disk
-			this.logger.LogInformation("Save ChainHeaders to disk...");
-			this.chainSyncService.SaveToDisk();
-
-			this.logFilter.Log = false;
+			this.logger.LogInformation("Start connecting to peers...");
+			this.nodeConnectionService.StartConnecting();
 		}
 	}
 }

@@ -45,11 +45,13 @@ namespace StratisMinter.Modules
 			// add each block index to memory for fast lookup
 			this.ChainIndex.Initialize(this.Context);
 
-			this.nodeConnectionService.StartConnecting();
-
 			// sync the headers chain
 			this.logger.LogInformation("Sync chain headers with network...");
 			this.chainSyncService.SyncChain();
+
+			// persist the chain
+			this.logger.LogInformation("Persist headers...");
+			this.chainSyncService.SaveToDisk();
 		}
 	}
 }
