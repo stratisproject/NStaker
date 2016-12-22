@@ -46,15 +46,17 @@ namespace StratisMinter
 				.AddSingleton<BlockMiner>().AddSingleton<BackgroundWorkItem, BlockMiner>(provider => provider.GetService<BlockMiner>())
 				.AddSingleton<Logger>().AddSingleton<BackgroundWorkItem, Logger>(provider => provider.GetService<Logger>())
 				.AddSingleton<LoggerKeyReader>().AddSingleton<BackgroundWorkItem, LoggerKeyReader>(provider => provider.GetService<LoggerKeyReader>())
+				.AddSingleton<ChainService>().AddSingleton<BackgroundWorkItem, ChainService>(provider => provider.GetService<ChainService>())
 				// BlockingWorkItem
 				.AddSingleton<DownloadWorker>().AddSingleton<BlockingWorkItem, DownloadWorker>(provider => provider.GetService<DownloadWorker>())
 				// standalone types
-				.AddSingleton<ChainService>()
 				.AddSingleton<BlockSyncHub>()
 				.AddSingleton<DownloadManager>()
 				.AddSingleton<ChainIndex>()
 				.AddSingleton<LogFilter>()
-                .AddScoped<WalletService>()
+                .AddSingleton<WalletService>()
+				.AddSingleton<WalletStore>()
+				.AddSingleton<WalletWorker>()
 				// build
 				.BuildServiceProvider();
 
@@ -66,12 +68,17 @@ namespace StratisMinter
 			    .AddConsole(this.services.GetService<LogFilter>().Filter, false);
 	    }
 
-		public void Run(Config config)
+	    public static Staker Build(Config config)
 	    {
 			// create the context
-			this.context = Context.Create(Network.Main, config);
-			this.BuildServices();
+			var staker = new Staker();
+			staker.context = Context.Create(Network.Main, config);
+			staker.BuildServices();
+		    return staker;
+	    }
 
+		public void Run()
+	    {
 			//start the logger 
 			this.services.GetService<Logger>().Execute();
 
@@ -84,11 +91,8 @@ namespace StratisMinter
 			foreach (var service in this.services.GetServices<BackgroundWorkItem>().OrderBy(o => o.Priority))
 				service.Execute();
 
-			this.context.CancellationTokenSource.CancelAfter(TimeSpanExtention.Infinite);
-		    while (!this.context.CancellationTokenSource.IsCancellationRequested)
-		    {
-				this.context.CancellationTokenSource.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
-			}
+			// block until the cancelation is signalled
+		    this.context.CancellationTokenSource.Token.WaitHandle.WaitOne(TimeSpanExtention.Infinite);
 
 			foreach (var service in this.services.GetServices<ShutdownModule>().OrderBy(o => o.Priority))
 				service.Execute();

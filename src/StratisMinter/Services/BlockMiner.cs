@@ -53,8 +53,6 @@ namespace StratisMinter.Services
 				while (this.nodeConnectionService.NodesGroup.ConnectedNodes.Count < this.Context.Config.ConnectedNodesToStake)
 					this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
 
-				var key = new BitcoinSecret(new Key(), this.Context.Network);
-
 				long fee;
 				var pindexPrev = this.chainIndex.Tip;
 
@@ -74,7 +72,6 @@ namespace StratisMinter.Services
 
 		// To decrease granularity of timestamp
 		// Supposed to be 2^n-1
-		private const int STAKE_TIMESTAMP_MASK = 15;
 
 		private bool SignBlock(Block block, ChainedBlock pindexBest, long fees)
 		{
@@ -96,14 +93,14 @@ namespace StratisMinter.Services
 			Transaction txCoinStake = new Transaction();
 
 			//if (BlockValidator.IsProtocolV2(bestHeight + 1)) // we are never in V2
-			txCoinStake.Time &= STAKE_TIMESTAMP_MASK;
+			txCoinStake.Time &= BlockValidator.STAKE_TIMESTAMP_MASK;
 
 			long searchTime = txCoinStake.Time; // search to current time
 
 			if (searchTime > lastCoinStakeSearchTime)
 			{
 				long searchInterval = searchTime - lastCoinStakeSearchTime;
-				if (this.walletService.CreateCoinStake(block.Header.Bits, searchInterval, fees, ref txCoinStake, ref key))
+				if (this.walletService.CreateCoinStake(pindexBest, block.Header.Bits, searchInterval, fees, ref txCoinStake, ref key))
 				{
 					if (txCoinStake.Time >= BlockValidator.GetPastTimeLimit(pindexBest) + 1)
 					{
@@ -257,7 +254,7 @@ namespace StratisMinter.Services
 			//	LogPrintf("CreateNewBlock(): total size %u\n", nBlockSize);
 
 			if (!proofOfStake)
-				block.Transactions[0].Outputs[0].Value = GetProofOfWorkReward(this.chainIndex, fee);
+				block.Transactions[0].Outputs[0].Value = BlockValidator.GetProofOfWorkReward(this.chainIndex, fee);
 
 			//if (pFees)
 			//	*pFees = nFees;
@@ -273,24 +270,7 @@ namespace StratisMinter.Services
 			return block;
 		}
 
-		public const long COIN = 100000000;
-		public const long CENT = 1000000;
-
-		private long GetProofOfWorkReward(ChainIndex chainIndex, long fees)
-		{
-			long PreMine = 98000000 * COIN;
-
-			if (chainIndex.Tip.Height == 1)
-				return PreMine;
-
-			return 4*COIN;
-		}
-
-		// miner's coin stake reward
-		private long GetProofOfStakeReward(ChainedBlock pindexPrev, long nCoinAge, long nFees)
-		{
-			return 1 * COIN + nFees;
-		}
+		
 
 	}
 }

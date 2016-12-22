@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using nStratis;
 using nStratis.Crypto;
+using StratisMinter.Services;
 
 namespace StratisMinter
 {
@@ -15,22 +16,26 @@ namespace StratisMinter
 	{
 		private const int MAX_BLOCK_SIZE = 1000000;
 
+		public const int STAKE_TIMESTAMP_MASK = 15;
+		public const long COIN = 100000000;
+		public const long CENT = 1000000;
+
 		private static bool IsProtocolV1RetargetingFixed(int height)
 		{
 			return height > 0;
 		}
 
-		private static bool IsProtocolV2(int height)
+		public static bool IsProtocolV2(int height)
 		{
 			return height > 0;
 		}
 
-		private static bool IsProtocolV3(int nTime)
+		public static bool IsProtocolV3(int nTime)
 		{
 			return nTime > 1470467000;
 		}
 
-		private static System.Numerics.BigInteger GetProofOfStakeLimit(Consensus consensus, int height)
+		private static BigInteger GetProofOfStakeLimit(Consensus consensus, int height)
 		{
 			return IsProtocolV2(height) ? consensus.ProofOfStakeLimitV2 : consensus.ProofOfStakeLimit;
 		}
@@ -43,6 +48,16 @@ namespace StratisMinter
 		private static long FutureDriftV1(long nTime) { return nTime + 10 * 60; }
 		private static long FutureDriftV2(long nTime) { return nTime + 128 * 60 * 60; }
 		private static long FutureDrift(long nTime, int nHeight) { return IsProtocolV2(nHeight) ? FutureDriftV2(nTime) : FutureDriftV1(nTime); }
+
+		// Get time weight
+		public static long GetWeight(long nIntervalBeginning, long nIntervalEnd)
+		{
+			// Kernel hash weight starts from 0 at the min age
+			// this change increases active coins participating the hash and helps
+			// to secure the network when proof-of-stake difficulty is low
+
+			return nIntervalEnd - nIntervalBeginning - StakeMinAge;
+		}
 
 		public static uint GetPastTimeLimit(ChainedBlock chainedBlock)
 		{
@@ -309,9 +324,9 @@ namespace StratisMinter
 			return true;
 		}
 
-		const int StakeMinConfirmations = 50;
-		const uint StakeMinAge = 60; // 8 hours
-		const uint ModifierInterval = 10 * 60; // time to elapse before new modifier is computed
+		public const int StakeMinConfirmations = 50;
+		public const uint StakeMinAge = 60; // 8 hours
+		public const uint ModifierInterval = 10 * 60; // time to elapse before new modifier is computed
 
 		public static bool CheckAndComputeStake(IBlockRepository blockStore, ITransactionRepository trasnactionStore, IBlockTransactionMapStore mapStore,
 			ChainBase chainIndex, ChainedBlock pindex, Block block)
@@ -539,7 +554,7 @@ namespace StratisMinter
 
 		public static bool CheckKernel(IBlockRepository blockStore, ITransactionRepository trasnactionStore,
 			IBlockTransactionMapStore mapStore,
-			ChainedBlock pindexPrev, uint nBits, uint nTime, OutPoint prevout, uint pBlockTime)
+			ChainedBlock pindexPrev, uint nBits, long nTime, OutPoint prevout, ref long pBlockTime)
 		{
 			uint256 hashProofOfStake = null, targetProofOfStake = null;
 
@@ -570,7 +585,7 @@ namespace StratisMinter
 			//if (pBlockTime)
 			//	pBlockTime = block.Header.Time;
 
-			return CheckStakeKernelHash(pindexPrev, nBits, block, txPrev, prevout, nTime, out hashProofOfStake, out targetProofOfStake, false);
+			return CheckStakeKernelHash(pindexPrev, nBits, block, txPrev, prevout, (uint)nTime, out hashProofOfStake, out targetProofOfStake, false);
 		}
 
 		public static bool ComputeStakeModifier(ChainBase chainIndex, ChainedBlock pindex)
@@ -811,5 +826,82 @@ namespace StratisMinter
 
 			return stakeModifier;
 		}
+
+		// ppcoin: total coin age spent in transaction, in the unit of coin-days.
+		// Only those coins meeting minimum age requirement counts. As those
+		// transactions not in main chain are not currently indexed so we
+		// might not find out about their coin age. Older transactions are 
+		// guaranteed to be in main chain by sync-checkpoint. This rule is
+		// introduced to help nodes establish a consistent view of the coin
+		// age (trust score) of competing branches.
+		public static bool GetCoinAge(IBlockRepository blockStore, ITransactionRepository trasnactionStore, IBlockTransactionMapStore mapStore, 
+			Transaction trx, ChainedBlock pindexPrev, out ulong nCoinAge)
+		{
+
+			BigInteger bnCentSecond = 0;  // coin age in the unit of cent-seconds
+			nCoinAge = 0;
+
+			if (trx.IsCoinBase)
+				return true;
+
+			foreach (var txin in trx.Inputs)
+			{
+				// First try finding the previous transaction in database
+				Transaction txPrev = trasnactionStore.Get(txin.PrevOut.Hash);
+				if(txPrev == null)
+					continue;  // previous transaction not in main chain
+				if (trx.Time < txPrev.Time)
+					return false;  // Transaction timestamp violation
+
+				if (IsProtocolV3((int)trx.Time))
+				{
+					int nSpendDepth = 0;
+					if (IsConfirmedInNPrevBlocks(blockStore, txPrev, pindexPrev, StakeMinConfirmations - 1, ref nSpendDepth))
+					{
+						//LogPrint("coinage", "coin age skip nSpendDepth=%d\n", nSpendDepth + 1);
+						continue; // only count coins meeting min confirmations requirement
+					}
+				}
+				else
+				{
+					// Read block header
+					var block = blockStore.GetBlock(txPrev.GetHash());
+					if (block == null)
+						return false; // unable to read block of previous transaction
+					if (block.Header.Time + StakeMinAge > trx.Time)
+						continue; // only count coins meeting min age requirement
+				}
+
+				long nValueIn = txPrev.Outputs[txin.PrevOut.N].Value;
+				bnCentSecond += new BigInteger(nValueIn) * (trx.Time - txPrev.Time) / CENT;
+
+
+				//LogPrint("coinage", "coin age nValueIn=%d nTimeDiff=%d bnCentSecond=%s\n", nValueIn, nTime - txPrev.nTime, bnCentSecond.ToString());
+			}
+
+			BigInteger bnCoinDay = bnCentSecond * CENT / COIN / (24 * 60 * 60);
+
+			//LogPrint("coinage", "coin age bnCoinDay=%s\n", bnCoinDay.ToString());
+			nCoinAge = new Target(bnCoinDay).ToCompact();
+
+			return true;
+		}
+
+		public static long GetProofOfWorkReward(ConcurrentChain chainIndex, long fees)
+		{
+			long PreMine = 98000000 * BlockValidator.COIN;
+
+			if (chainIndex.Tip.Height == 1)
+				return PreMine;
+
+			return 4 * BlockValidator.COIN;
+		}
+
+		// miner's coin stake reward
+		public static long GetProofOfStakeReward(ChainedBlock pindexPrev, ulong nCoinAge, long nFees)
+		{
+			return 1 * BlockValidator.COIN + nFees;
+		}
+
 	}
 }
