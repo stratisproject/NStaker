@@ -63,7 +63,7 @@ namespace StratisMinter.Store
 			// the POS parameters set if not load its 
 			// block and set the pos params
 			var prevChained = chainedBlock.Previous;
-			if (!prevChained.Header.PosParameters.IsSet())
+			if (prevChained != null && !prevChained.Header.PosParameters.IsSet())
 			{
 				var prevBlock = this.GetFullBlock(prevChained.HashBlock);
 				prevChained.Header.PosParameters = prevBlock.Header.PosParameters;

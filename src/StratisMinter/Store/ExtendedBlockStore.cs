@@ -82,7 +82,13 @@ namespace StratisMinter.Store
         {
             stream.ReadWrite(ref this.Block);
             stream.ReadWrite(ref this.Stake);
-        }
+
+			// a small hack, when the block serializes itself 
+			// it overrides the pos params, here we set them back
+			// this needs to be fixed in NStratis where the block
+			// serializer will check if params are already set
+			this.Block.Header.PosParameters = this.Stake;
+		}
     }
 
     public class StakeBlockStore : Store<StoredStakeBlock, StakeBlock>

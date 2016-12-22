@@ -320,7 +320,7 @@ namespace StratisMinter
 				throw new ArgumentException();
 
 			var pindexPrev = pindex.Previous;
-			if (!pindexPrev.Header.PosParameters.IsSet())
+			if (pindexPrev != null && !pindexPrev.Header.PosParameters.IsSet())
 				return false; // the stake proof of the previous block is not set
 
 			uint256 hashProof = null;
