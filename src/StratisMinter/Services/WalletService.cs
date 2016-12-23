@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -10,67 +12,266 @@ using StratisMinter.Store;
 
 namespace StratisMinter.Services
 {
+	public class WalletException : Exception
+	{
+		public WalletException()
+		{
+		}
+
+		public WalletException(string message) : base(message)
+		{
+		}
+	}
+
 	public class Output
 	{
 		public WalletTx WalletTx;
-		public int Index;
 		public int Depth;
 	}
 
-	public class WalletTx
+	public class WalletTx : IBitcoinSerializable
 	{
 		public uint256 Blokckid;
 		public uint256 Transactionid;
 		public TxOut TxOut;
 		public bool Spent;
+		public int OutputIndex;
 		public Transaction Transaction;
+		public PubKey PubKey;
+
+
+		public void ReadWrite(BitcoinStream stream)
+		{
+			stream.ReadWrite(ref this.Blokckid);
+			stream.ReadWrite(ref this.Transactionid);
+			stream.ReadWrite(ref this.TxOut);
+			stream.ReadWrite(ref this.Spent);
+			stream.ReadWrite(ref this.OutputIndex);
+			stream.ReadWrite(ref this.PubKey);
+		}
 	}
 
-	public class Wallet
+	public class Wallet : IBitcoinSerializable
 	{
-		public Dictionary<uint256, WalletTx> WalletsList;
+		public List<WalletTx> WalletsList;
+		public uint256 LastIndexBlock;
+
+		public void ReadWrite(BitcoinStream stream)
+		{
+			stream.ReadWrite(ref this.LastIndexBlock);
+			stream.ReadWrite(ref this.WalletsList);
+		}
+	}
+
+	public class KeyBag
+	{
+		public List<Key> Keys;
 	}
 
 	public class WalletStore : WorkItem
 	{
 		public Wallet Wallet { get; set; }
+		protected readonly object LockObj = new object();
+		public KeyBag KeyBag { get; set; }
 
 		public WalletStore(Context context) : base(context)
 		{
-			this.Wallet = new Wallet {WalletsList = new Dictionary<uint256, WalletTx>()};
-
+			this.Wallet = new Wallet {WalletsList = new List<WalletTx>()};
+			this.KeyBag = new KeyBag {Keys = new List<Key>()};
 		}
 
 		public Money GetBalance()
 		{
-			return Money.Zero;
+			return this.Wallet.WalletsList.Where(s => !s.Spent).Sum(s => s.TxOut.Value);
 		}
 
 		public Key GetKey(PubKey pubKey)
 		{
-			return null;
+			return this.KeyBag.Keys.Single(k => k.PubKey == pubKey);
 		}
 
-		public bool IsSpent(WalletTx walletTx)
+
+		public bool CreateAndSaveKeyBag(string password, Key key)
 		{
-			return false;
+			// only support one key for now
+
+			lock (LockObj)
+			{
+				if (File.Exists(this.Context.Config.File("walletkeys.dat")))
+					return false;
+
+				var encrypted = key.GetEncryptedBitcoinSecret(password, this.Context.Network);
+				File.WriteAllText(this.Context.Config.File("walletkeys.dat"), encrypted.ToString());
+			}
+
+			return true;
+		}
+
+		public bool LoadKeyBag(string password)
+		{
+			lock (LockObj)
+			{
+				if (!File.Exists(this.Context.Config.File("walletkeys.dat")))
+					return false;
+
+				// assume keys where already loaded
+				if (this.KeyBag.Keys.Any())
+					return true;
+
+				var encrypted = File.ReadAllText(this.Context.Config.File("walletkeys.dat"));
+				var key = Key.Parse(encrypted, password);
+				this.KeyBag.Keys.Add(key);
+			}
+
+			return true;
+		}
+
+		public void Save()
+		{
+			lock (LockObj)
+			{
+				using (var file = File.OpenWrite(this.Context.Config.File("walletinfo.dat")))
+				{
+					var stream = new BitcoinStream(file, true);
+					stream.ReadWrite(this.Wallet);
+				}
+			}
+		}
+
+		public void Load()
+		{
+			if (File.Exists(this.Context.Config.File("walletinfo.dat")))
+			{
+				lock (LockObj)
+				{
+					var bytes = File.ReadAllBytes(this.Context.Config.File("walletinfo.dat"));
+					using (var mem = new MemoryStream(bytes))
+					{
+						var stream = new BitcoinStream(mem, false);
+
+						try
+						{
+							Wallet wallet = null;
+							stream.ReadWrite(ref wallet);
+							this.Wallet = wallet;
+						}
+						catch (EndOfStreamException)
+						{
+						}
+					}
+				}
+
+				this.LoadTransactions();
+			}
+			else
+			{
+				// create the wallet.
+				this.Save();
+			}
+		}
+
+		public void LoadTransactions()
+		{
+			foreach (var walletTx in this.Wallet.WalletsList.Where(t => t.Transaction == null))
+			{
+				var trx = this.Context.ChainIndex.Get(walletTx.Transactionid);
+
+				if (trx == null)
+					throw new WalletException();
+
+				walletTx.Transaction = trx;
+			}
 		}
 	}
 
 	public class WalletWorker : BackgroundWorkItem
 	{
 		private readonly WalletStore walletStore;
+		private readonly BlockingCollection<Block> blocksToCheck;
 
 		public WalletWorker(Context context, WalletStore walletStore) : base(context)
 		{
 			this.walletStore = walletStore;
+			this.blocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+			this.Pubkeys = new Lazy<List<PubKey>>(GetPubKeys);
 		}
+
+		private List<PubKey> GetPubKeys()
+		{
+			return this.walletStore.Wallet.WalletsList.Select(w => w.PubKey)
+			.Concat(this.walletStore.KeyBag.Keys.Select(s => s.PubKey))
+			.Distinct().ToList();
+		}
+
+		private Lazy<List<PubKey>> Pubkeys { get; set; }
 
 		protected override void Work()
 		{
 			// this will be a processes that will keep 
 			// the wallet utxo up to date, when new blocks
 			// are found they are sent here for scanning
+
+			while (this.NotCanceled())
+			{
+				var block = this.blocksToCheck.Take(this.Cancellation.Token);
+
+				this.ProcessesBlock(block);
+			}
+		}
+
+		public void ProcessesBlock(Block block)
+		{
+			var pubKeys = this.Pubkeys.Value;
+
+			bool found = false;
+			foreach (var trx in block.Transactions)
+			{
+				// check all inputs
+				foreach (var trxInput in trx.Inputs)
+				{
+					var item = this.walletStore.Wallet.WalletsList.FirstOrDefault(w =>
+					w.Transactionid == trxInput.PrevOut.Hash &&
+					w.OutputIndex == trxInput.PrevOut.N);
+
+					if (item != null)
+					{
+						item.Spent = true;
+						found = true;
+					}
+				}
+
+				// check all outputs
+				var index = 0;
+				foreach (var output in trx.Outputs)
+				{
+					if (output.ScriptPubKey.GetDestinationPublicKeys().Any(a => pubKeys.Contains(a)))
+					{
+						var trxhash = trx.GetHash();
+
+						// add idempotent behaviour to this logic
+						if (this.walletStore.Wallet.WalletsList.Any(w => w.Transactionid == trxhash))
+							continue;
+						
+						this.walletStore.Wallet.WalletsList.Add(new WalletTx
+						{
+							Transaction = trx,
+							TxOut = output,
+							Transactionid = trxhash,
+							OutputIndex = index,
+							PubKey = pubKeys.First(f => f == output.ScriptPubKey.GetDestinationPublicKeys().First()) // for now deal with a single pub key
+						});
+
+						found = true;
+					}
+
+					index++;
+				}
+			}
+
+			this.walletStore.Wallet.LastIndexBlock = block.GetHash();
+
+			if (found)
+				this.walletStore.Save();
 		}
 	}
 
@@ -118,10 +319,8 @@ namespace StratisMinter.Services
 		{
 			var vCoins = new List<Output>();
 
-			foreach (var it in this.walletStore.Wallet.WalletsList)
+			foreach (var pcoin in this.walletStore.Wallet.WalletsList)
 			{
-				var pcoin = it.Value;
-
 				int nDepth = this.GetDepthInMainChain(pcoin);
 				if (nDepth < 1)
 					continue;
@@ -142,24 +341,24 @@ namespace StratisMinter.Services
 					continue;
 
 				for (int i = 0; i < pcoin.Transaction.Outputs.Count; i++)
-					if (!this.walletStore.IsSpent(pcoin) && pcoin.TxOut.Value >= this.minimumInputValue)
-						vCoins.Add(new Output {Depth = nDepth, WalletTx = pcoin, Index = i});
+					if (!pcoin.Spent && pcoin.TxOut.Value >= this.minimumInputValue)
+						vCoins.Add(new Output {Depth = nDepth, WalletTx = pcoin});
 			}
 
 			return vCoins;
 		}
 
-		private bool SelectCoinsForStaking(long nTargetValue, uint nSpendTime, out Dictionary<WalletTx, int> setCoinsRet,
+		private bool SelectCoinsForStaking(long nTargetValue, uint nSpendTime, out List<WalletTx> setCoinsRet,
 			out long nValueRet)
 		{
 			var coins = this.AvailableCoinsForStaking(nSpendTime);
-			setCoinsRet = new Dictionary<WalletTx, int>();
+			setCoinsRet = new List<WalletTx>();
 			nValueRet = 0;
 
 			foreach (var output in coins)
 			{
 				var pcoin = output.WalletTx;
-				int i = output.Index;
+				//int i = output.Index;
 
 				// Stop if we've chosen enough inputs
 				if (nValueRet >= nTargetValue)
@@ -171,13 +370,13 @@ namespace StratisMinter.Services
 				{
 					// If input value is greater or equal to target then simply insert
 					//    it into the current subset and exit
-					setCoinsRet.Add(pcoin, i);
+					setCoinsRet.Add(pcoin);
 					nValueRet += n;
 					break;
 				}
 				else if (n < nTargetValue + BlockValidator.CENT)
 				{
-					setCoinsRet.Add(pcoin, i);
+					setCoinsRet.Add(pcoin);
 					nValueRet += n;
 				}
 			}
@@ -215,7 +414,7 @@ namespace StratisMinter.Services
 
 			List<WalletTx> vwtxPrev = new List<WalletTx>();
 
-			Dictionary<WalletTx, int> setCoins;
+			List<WalletTx> setCoins;
 			long nValueIn = 0;
 
 			// Select coins with suitable depth
@@ -237,13 +436,13 @@ namespace StratisMinter.Services
 					n < Math.Min(nSearchInterval, maxStakeSearchInterval) && !fKernelFound && pindexPrev == this.chainIndex.Tip;
 					n++)
 				{
-					var prevoutStake = new OutPoint(coin.Key.Transaction.GetHash(), coin.Value);
+					var prevoutStake = new OutPoint(coin.Transactionid, coin.OutputIndex);
 					long nBlockTime = 0;
 
 					if (BlockValidator.CheckKernel(this.chainIndex, this.chainIndex, this.chainIndex, pindexPrev, bits,
 						txNew.Time - n, prevoutStake, ref nBlockTime))
 					{
-						scriptPubKeyKernel = coin.Key.Transaction.Outputs[coin.Value].ScriptPubKey;
+						scriptPubKeyKernel = coin.TxOut.ScriptPubKey;
 
 						key = null;
 						// calculate the key type
@@ -265,8 +464,8 @@ namespace StratisMinter.Services
 
 						txNew.Time -= n;
 						txNew.AddInput(new TxIn(prevoutStake));
-						nCredit += coin.Key.Transaction.Outputs[coin.Value].Value;
-						vwtxPrev.Add(coin.Key);
+						nCredit += coin.TxOut.Value;
+						vwtxPrev.Add(coin);
 						txNew.Outputs.Add(new TxOut(0, scriptPubKeyOut));
 
 						//LogPrint("coinstake", "CreateCoinStake : added kernel type=%d\n", whichType);
@@ -284,28 +483,28 @@ namespace StratisMinter.Services
 
 			foreach (var coin in setCoins)
 			{
-				var cointrx = coin.Key.Transaction;
-				var coinIndex = coin.Value;
+				var cointrx = coin;
+				//var coinIndex = coin.Value;
 
 				// Attempt to add more inputs
 				// Only add coins of the same key/address as kernel
 				if (txNew.Outputs.Count == 2
 				    && (
-					    cointrx.Outputs[coinIndex].ScriptPubKey == scriptPubKeyKernel ||
-					    cointrx.Outputs[coinIndex].ScriptPubKey == txNew.Outputs[1].ScriptPubKey
+					    cointrx.TxOut.ScriptPubKey == scriptPubKeyKernel ||
+					    cointrx.TxOut.ScriptPubKey == txNew.Outputs[1].ScriptPubKey
 				    )
-				    && cointrx.GetHash() != txNew.Inputs[0].PrevOut.Hash)
+				    && cointrx.Transactionid != txNew.Inputs[0].PrevOut.Hash)
 				{
-					long nTimeWeight = BlockValidator.GetWeight((long) cointrx.Time, (long) txNew.Time);
+					long nTimeWeight = BlockValidator.GetWeight((long) cointrx.Transaction.Time, (long) txNew.Time);
 
 					// Stop adding more inputs if already too many inputs
 					if (txNew.Inputs.Count >= 100)
 						break;
 					// Stop adding inputs if reached reserve limit
-					if (nCredit + cointrx.Outputs[coinIndex].Value > nBalance - this.reserveBalance)
+					if (nCredit + cointrx.TxOut.Value > nBalance - this.reserveBalance)
 						break;
 					// Do not add additional significant input
-					if (cointrx.Outputs[coinIndex].Value >= GetStakeCombineThreshold())
+					if (cointrx.TxOut.Value >= GetStakeCombineThreshold())
 						continue;
 					// Do not add input that is still too young
 					if (BlockValidator.IsProtocolV3((int) txNew.Time))
@@ -318,10 +517,10 @@ namespace StratisMinter.Services
 							continue;
 					}
 
-					txNew.Inputs.Add(new TxIn(new OutPoint(cointrx.GetHash(), coinIndex)));
+					txNew.Inputs.Add(new TxIn(new OutPoint(cointrx.Transactionid, cointrx.OutputIndex)));
 
-					nCredit += cointrx.Outputs[coinIndex].Value;
-					vwtxPrev.Add(coin.Key);
+					nCredit += cointrx.TxOut.Value;
+					vwtxPrev.Add(coin);
 				}
 			}
 

@@ -29,8 +29,6 @@ namespace StratisMinter.Modules
 			// load transaction indexes
 			this.logger.LogInformation("Load transaction index store...");
 			this.ChainIndex.TransactionIndex.Load();
-
-			this.logFilter.Log = false;
 		}
 	}
 }

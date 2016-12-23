@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using nStratis;
 
 namespace StratisMinter
 {
@@ -15,6 +17,8 @@ namespace StratisMinter
 	    public int MaxBlocksInMemory { get; set; } = 20000;
 
 	    public int ConnectedNodesToStake { get; set; } = 3;
+
+		public Key FirstLoadPrivateKey { get; set; }
 
 		// use the specified ip to download the blockchain from
 		// in cases where we know a trusted node we can specify it here

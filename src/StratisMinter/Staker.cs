@@ -39,6 +39,7 @@ namespace StratisMinter
 				.AddSingleton<StartupModule, StartupConnectionModule>()
 				.AddSingleton<StartupModule, StartupChainModule>()
 				.AddSingleton<StartupModule, StartupIndexModule>()
+				.AddSingleton<StartupModule, StartupWalletModule>()
 				// BackgroundWorkItem
 				.AddSingleton<NodeConnectionService>().AddSingleton<BackgroundWorkItem, NodeConnectionService>(provider => provider.GetService<NodeConnectionService>())
 				.AddSingleton<BlockReceiver>().AddSingleton<BackgroundWorkItem, BlockReceiver>(provider => provider.GetService<BlockReceiver>())

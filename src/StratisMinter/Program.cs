@@ -21,6 +21,8 @@ namespace StratisMinter
 				//TrustedNodes = new List<IPEndPoint> { new IPEndPoint(IPAddress.Parse("185.64.104.55"), Network.Main.DefaultPort) }
 			};
 			
+			//conf.FirstLoadPrivateKey = Key.Parse("your staking prv key here", Network.Main);
+
 			Staker.Build(conf).Run();
         }
     }
