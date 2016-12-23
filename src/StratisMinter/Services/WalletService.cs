@@ -107,6 +107,11 @@ namespace StratisMinter.Services
 			return true;
 		}
 
+		public bool BagFound()
+		{
+			return File.Exists(this.Context.Config.File("walletkeys.dat"));
+		}
+
 		public bool LoadKeyBag(string password)
 		{
 			lock (LockObj)
@@ -163,11 +168,6 @@ namespace StratisMinter.Services
 
 				this.LoadTransactions();
 			}
-			else
-			{
-				// create the wallet.
-				this.Save();
-			}
 		}
 
 		public void LoadTransactions()
@@ -187,12 +187,12 @@ namespace StratisMinter.Services
 	public class WalletWorker : BackgroundWorkItem
 	{
 		private readonly WalletStore walletStore;
-		public readonly BlockingCollection<Block> BlocksToCheck;
+		private readonly BlockingCollection<Block> blocksToCheck;
 
 		public WalletWorker(Context context, WalletStore walletStore) : base(context)
 		{
 			this.walletStore = walletStore;
-			this.BlocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+			this.blocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 			this.Pubkeys = new Lazy<List<PubKey>>(GetPubKeys);
 		}
 
@@ -206,17 +206,28 @@ namespace StratisMinter.Services
 		private Lazy<List<PubKey>> Pubkeys { get; set; }
 
 		protected override void Work()
-		{
+		{			
+			if(this.Pubkeys.Value.Empty())
+				return;
+
 			// this will be a processes that will keep 
 			// the wallet utxo up to date, when new blocks
 			// are found they are sent here for scanning
 
 			while (this.NotCanceled())
 			{
-				var block = this.BlocksToCheck.Take(this.Cancellation.Token);
+				var block = this.blocksToCheck.Take(this.Cancellation.Token);
 
 				this.ProcessesBlock(block);
 			}
+		}
+
+		public void AddBlock(Block block)
+		{
+			if (this.Pubkeys.Value.Empty())
+				return;
+
+			this.blocksToCheck.Add(block);
 		}
 
 		public void ProcessesBlock(Block block)

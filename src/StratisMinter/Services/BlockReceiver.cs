@@ -76,7 +76,7 @@ namespace StratisMinter.Services
 								this.logger.LogInformation($"Added block - height: { receivedChainedBlock.Height } hash: { receivedBlockHash }");
 
 								// send the block to the wallet for processing
-								this.walletWorker.BlocksToCheck.Add(receivedBlock.Block);
+								this.walletWorker.AddBlock(receivedBlock.Block);
 								continue;
 							}
 						}

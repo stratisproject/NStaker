@@ -257,7 +257,7 @@ namespace StratisMinter.Services
 						throw new InvalidBlockException();
 
 					// send the block to the wallet for processing
-					this.walletWorker.BlocksToCheck.Add(nextBlock);
+					this.walletWorker.AddBlock(nextBlock);
 
 					this.logger.LogInformation($"Added block {next.Height} hash {next.HashBlock}");
 

@@ -35,12 +35,12 @@ namespace StratisMinter.Modules
 			// if the file is not present and no key provided in 
 			// config a message is passed to the user
 
-			Console.WriteLine("Private key password:");
-
-			var pass = Console.ReadLine();
 
 			if (this.Context.Config.FirstLoadPrivateKey != null)
 			{
+				Console.WriteLine("Create a private key password:");
+				var pass = Console.ReadLine();
+
 				if (!this.walletStore.CreateAndSaveKeyBag(pass, this.Context.Config.FirstLoadPrivateKey))
 				{
 					Console.WriteLine("Key bag already exists!!");
@@ -53,14 +53,16 @@ namespace StratisMinter.Modules
 			}
 			else
 			{
-				if (!this.walletStore.LoadKeyBag(pass))
+				if (!this.walletStore.BagFound())
 				{
-					Console.WriteLine("No 'walletkeys.dat' found provide a key in config");
-					Console.WriteLine("This will happen only once on first start");
-					Console.ReadKey();
-					this.Context.CancellationTokenSource.Cancel();
-					throw new WalletException();
+					this.logger.LogInformation("No wallet...");
+					this.logFilter.Log = false;
+					return;
 				}
+
+				Console.WriteLine("Enter the private key password:");
+				var pass = Console.ReadLine();
+				this.walletStore.LoadKeyBag(pass);
 			}
 
 			this.logger.LogInformation("Loading wallet...");

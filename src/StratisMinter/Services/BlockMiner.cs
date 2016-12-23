@@ -180,7 +180,7 @@ namespace StratisMinter.Services
 
 			// add to local store
 			this.chainIndex.AddBlock(block, chainedBlock);
-			this.walletWorker.BlocksToCheck.Add(block);
+			this.walletWorker.AddBlock(block);
 
 		}
 
