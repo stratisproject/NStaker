@@ -144,17 +144,19 @@ namespace StratisMinter.Services
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ChainIndex chainIndex;
 		private readonly ChainService chainSyncService;
+		private readonly WalletWorker walletWorker;
 		private readonly ILogger logger;
 
 		public ConcurrentDictionary<DownloadFetcher, Node> Fetchers { get; }
 		public ConcurrentDictionary<uint256, Block> ReceivedBlocks { get; }
 
-		public DownloadManager(Context context, NodeConnectionService nodeConnectionService, ChainService chainSyncService, ILoggerFactory loggerFactory)
+		public DownloadManager(Context context, NodeConnectionService nodeConnectionService, ChainService chainSyncService, ILoggerFactory loggerFactory, WalletWorker walletWorker)
 		{
 			this.context = context;
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
+			this.walletWorker = walletWorker;
 			this.ReceivedBlocks = new ConcurrentDictionary<uint256, Block>();
 			this.Fetchers = new ConcurrentDictionary<DownloadFetcher, Node>();
 			this.logger = loggerFactory.CreateLogger<DownloadManager>();
@@ -253,6 +255,9 @@ namespace StratisMinter.Services
 					// validate and add the block to the chain index
 					if(!this.chainIndex.ValidateAndAddBlock(nextBlock))
 						throw new InvalidBlockException();
+
+					// send the block to the wallet for processing
+					this.walletWorker.BlocksToCheck.Add(nextBlock);
 
 					this.logger.LogInformation($"Added block {next.Height} hash {next.HashBlock}");
 

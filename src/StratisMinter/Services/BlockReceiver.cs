@@ -25,17 +25,19 @@ namespace StratisMinter.Services
 	{
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ChainService chainSyncService;
+		private readonly WalletWorker walletWorker;
 		private readonly ChainIndex chainIndex;
 		private readonly ILogger logger;
 
 		public BlockSyncHub BlockSyncHub { get; }
 
 		public BlockReceiver(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService, ILoggerFactory loggerFactory) : base(context)
+			BlockSyncHub blockSyncHub, ChainService chainSyncService, ILoggerFactory loggerFactory, WalletWorker walletWorker) : base(context)
 		{
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
+			this.walletWorker = walletWorker;
 			this.logger = loggerFactory.CreateLogger<BlockReceiver>();
 
 			this.BlockSyncHub = blockSyncHub;
@@ -72,6 +74,9 @@ namespace StratisMinter.Services
 							if (this.chainIndex.ValidateAndAddBlock(receivedBlock.Block))
 							{
 								this.logger.LogInformation($"Added block - height: { receivedChainedBlock.Height } hash: { receivedBlockHash }");
+
+								// send the block to the wallet for processing
+								this.walletWorker.BlocksToCheck.Add(receivedBlock.Block);
 								continue;
 							}
 						}

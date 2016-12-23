@@ -187,12 +187,12 @@ namespace StratisMinter.Services
 	public class WalletWorker : BackgroundWorkItem
 	{
 		private readonly WalletStore walletStore;
-		private readonly BlockingCollection<Block> blocksToCheck;
+		public readonly BlockingCollection<Block> BlocksToCheck;
 
 		public WalletWorker(Context context, WalletStore walletStore) : base(context)
 		{
 			this.walletStore = walletStore;
-			this.blocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+			this.BlocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 			this.Pubkeys = new Lazy<List<PubKey>>(GetPubKeys);
 		}
 
@@ -213,7 +213,7 @@ namespace StratisMinter.Services
 
 			while (this.NotCanceled())
 			{
-				var block = this.blocksToCheck.Take(this.Cancellation.Token);
+				var block = this.BlocksToCheck.Take(this.Cancellation.Token);
 
 				this.ProcessesBlock(block);
 			}

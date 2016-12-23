@@ -91,9 +91,9 @@ namespace StratisMinter.Store
 				return false;
 			
 			this.indexStore.Put(new StakeBlock { Block = block, Stake = block.Header.PosParameters });
+			this.TransactionIndex.Add(block);
 			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
 			this.LastIndexedBlock = chainedBlock;
-			this.TransactionIndex.Add(block);
 
 			return true;
 		}

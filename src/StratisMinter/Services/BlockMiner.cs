@@ -24,6 +24,7 @@ namespace StratisMinter.Services
 		private readonly ChainService chainSyncService;
 		private readonly ChainIndex chainIndex;
 		private readonly WalletService walletService;
+		private readonly WalletWorker walletWorker;
 
 		public BlockSyncHub BlockSyncHub { get; }
 
@@ -31,12 +32,13 @@ namespace StratisMinter.Services
 		private long lastCoinStakeSearchInterval;
 
 		public BlockMiner(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService) : base(context)
+			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker) : base(context)
 		{
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
 			this.walletService = walletService;
+			this.walletWorker = walletWorker;
 			this.BlockSyncHub = blockSyncHub;
 			this.minerSleep = 500; // GetArg("-minersleep", 500);
 			this.lastCoinStakeSearchInterval = 0;
@@ -178,6 +180,8 @@ namespace StratisMinter.Services
 
 			// add to local store
 			this.chainIndex.AddBlock(block, chainedBlock);
+			this.walletWorker.BlocksToCheck.Add(block);
+
 		}
 
 		private void CheckWork(Block block)
