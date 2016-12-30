@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using nStratis;
 using StratisMinter.Base;
 using StratisMinter.Services;
 using StratisMinter.Store;
@@ -29,6 +30,10 @@ namespace StratisMinter.Modules
 			// load transaction indexes
 			this.logger.LogInformation("Load transaction index store...");
 			this.ChainIndex.TransactionIndex.Load();
+
+
+			
+
 		}
 	}
 }

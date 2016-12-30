@@ -53,12 +53,12 @@ namespace StratisMinter.Services
 			// this will keep the chain headers in 
 			// sync with the network 
 
-			foreach (var behavior in this.Context.ConnectionParameters.TemplateBehaviors.OfType<ChainBehavior>())
-				behavior.CanSync = true;
+			//foreach (var behavior in this.Context.ConnectionParameters.TemplateBehaviors.OfType<ChainBehavior>())
+			//	behavior.CanSync = true;
 			
-			foreach (var node in this.NodesGroup.ConnectedNodes)
-				foreach (var behavior in node.Behaviors.OfType<ChainBehavior>())
-					behavior.CanSync = true;
+			//foreach (var node in this.NodesGroup.ConnectedNodes)
+			//	foreach (var behavior in node.Behaviors.OfType<ChainBehavior>())
+			//		behavior.CanSync = true;
 
 			foreach (var behavior in this.Context.ConnectionParameters.TemplateBehaviors.OfType<BlockSyncBehaviour>())
 			{

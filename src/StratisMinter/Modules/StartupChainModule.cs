@@ -38,7 +38,9 @@ namespace StratisMinter.Modules
 				var genesis = this.Context.Network.GetGenesis();
 				this.ChainIndex.SetTip(new ChainedBlock(genesis.Header, 0));
 				// validate the block to generate the pos params
-				this.ChainIndex.ValidateBlock(genesis);
+				BlockValidator.CheckAndComputeStake(this.ChainIndex, this.ChainIndex, this.ChainIndex, this.ChainIndex,
+					this.ChainIndex.Tip, genesis);
+				//this.ChainIndex.ValidateBlock(genesis);
 			}
 
 			// load the index chain this will 

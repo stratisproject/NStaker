@@ -25,6 +25,7 @@ namespace StratisMinter.Services
 		private readonly ChainIndex chainIndex;
 		private readonly WalletService walletService;
 		private readonly WalletWorker walletWorker;
+		private readonly BlockReceiver blockReceiver;
 
 		public BlockSyncHub BlockSyncHub { get; }
 
@@ -32,13 +33,14 @@ namespace StratisMinter.Services
 		private long lastCoinStakeSearchInterval;
 
 		public BlockMiner(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker) : base(context)
+			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker, BlockReceiver blockReceiver) : base(context)
 		{
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
 			this.chainSyncService = chainSyncService;
 			this.walletService = walletService;
 			this.walletWorker = walletWorker;
+			this.blockReceiver = blockReceiver;
 			this.BlockSyncHub = blockSyncHub;
 			this.minerSleep = 500; // GetArg("-minersleep", 500);
 			this.lastCoinStakeSearchInterval = 0;
@@ -48,6 +50,7 @@ namespace StratisMinter.Services
 		{
 			while (this.NotCanceled())
 			{
+				return;
 				// this method blocks
 				this.WaitForDownLoadMode();
 
@@ -95,7 +98,7 @@ namespace StratisMinter.Services
 			Transaction txCoinStake = new Transaction();
 
 			//if (BlockValidator.IsProtocolV2(bestHeight + 1)) // we are never in V2
-			txCoinStake.Time &= BlockValidator.STAKE_TIMESTAMP_MASK;
+			txCoinStake.Time += BlockValidator.STAKE_TIMESTAMP_MASK;
 
 			long searchTime = txCoinStake.Time; // search to current time
 
@@ -165,12 +168,13 @@ namespace StratisMinter.Services
 
 				// Process this block the same as if we had received it from another node
 			ChainedBlock chainedBlock;
-			if (!this.chainIndex.ValidateBlock(block, out chainedBlock))
+			if (!this.blockReceiver.ProcessBlock(null, block, out chainedBlock))
 				return;// error("CheckStake() : ProcessBlock, block not accepted");
 
 			// was a newer tip discovered
 			if(this.chainIndex.Height >= chainedBlock.Height)
 				return;
+			
 			
 			// set a new tip
 			this.chainIndex.SetTip(chainedBlock);
@@ -179,7 +183,7 @@ namespace StratisMinter.Services
 			this.BlockSyncHub.BroadcastBlocks.Add(new HubBroadcastItem {Block = block});
 
 			// add to local store
-			this.chainIndex.AddBlock(block, chainedBlock);
+			this.chainIndex.AddToBlockStore(block, chainedBlock);
 			this.walletWorker.AddBlock(block);
 
 		}
@@ -206,7 +210,7 @@ namespace StratisMinter.Services
 			// Create coinbase tx
 			var txNew = new Transaction();
 			txNew.AddInput(new TxIn());
-			txNew.AddOutput(new TxOut());
+			txNew.AddOutput(new TxOut(Money.Zero, Script.Empty));
 
 			if (!proofOfStake)
 			{

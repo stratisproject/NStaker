@@ -21,7 +21,7 @@ namespace StratisMinter.Modules
 			// register a behaviour, the ChainBehavior maintains 
 			// the chain of headers in sync with the network
 			// before we loaded the headers don't sync the chain
-			var chainBehavior = new ChainBehavior(this.Context.ChainIndex) { CanSync = false };
+			var chainBehavior = new ChainBehavior(this.Context.ChainIndex) { CanSync = false, CanRespondToGetHeaders = true};
 			this.Context.ConnectionParameters.TemplateBehaviors.Add(chainBehavior);
 
 			var blockSyncBehaviour = new BlockSyncBehaviour(this.blockReceiver.BlockSyncHub)

@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using nStratis;
 using nStratis.Protocol.Behaviors;
 using StratisMinter.Base;
 using StratisMinter.Store;
@@ -35,6 +36,7 @@ namespace StratisMinter.Services
 		private readonly LockObject saveLock = new LockObject();
 		private long savedHeight = 0;
 
+
 		// this method is thread safe
 		// it should be called periodically by a behaviour  
 		// that is in charge of keeping the chin in sync
@@ -62,5 +64,43 @@ namespace StratisMinter.Services
 				this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(5));
 			}
 		}
+
+		public double GetPoSKernelPS()
+		{
+			int nPoSInterval = 72;
+			double dStakeKernelsTriedAvg = 0;
+			int nStakesHandled = 0, nStakesTime = 0;
+
+			ChainedBlock pindex = this.ChainIndex.Tip;
+			ChainedBlock pindexPrevStake = null;
+
+			while (pindex != null && nStakesHandled < nPoSInterval)
+			{
+				// todo: verify this does not require to be set by the block
+				if (pindex.Header.PosParameters.IsProofOfStake())
+				{
+					if (pindexPrevStake != null)
+					{
+						dStakeKernelsTriedAvg += 1;//GetDifficulty(pindexPrevStake) * 4294967296.0;
+						nStakesTime += (int)pindexPrevStake.Header.Time - (int)pindex.Header.Time;
+						nStakesHandled++;
+					}
+					pindexPrevStake = pindex;
+				}
+
+				pindex = pindex.Previous;
+			}
+
+			double result = 0;
+
+			if (nStakesTime > 0)
+				result = dStakeKernelsTriedAvg / nStakesTime;
+
+			if (BlockValidator.IsProtocolV2(this.ChainIndex.Height))
+				result *= BlockValidator.STAKE_TIMESTAMP_MASK + 1;
+
+			return result;
+		}
+
 	}
 }

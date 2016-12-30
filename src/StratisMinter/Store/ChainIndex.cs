@@ -15,17 +15,20 @@ namespace StratisMinter.Store
 		private StakeBlockStore store;
 		private IndexedStakeBlockStore indexStore;
 		private BlockMemoryStore blockMemoryStore;
+		private Context context;
 
 		public TransactionToBlockItemIndex TransactionIndex { get; private set; }
 		public ChainedBlock LastIndexedBlock { get; private set; }
+		public List<ChainedBlock> AlternateTips { get; private set; }
 
 		public void Initialize(Context context)
 		{
-			// todo: create a repository that persists index data to file
-			this.store = new StakeBlockStore(context.Config.FolderLocation, context.Network);
+			this.context = context;
+			this.store = new StakeBlockStore(this.context.Config.FolderLocation, this.context.Network);
 			this.indexStore = new IndexedStakeBlockStore(new InMemoryNoSqlRepository(), store);
-			this.TransactionIndex = new TransactionToBlockItemIndex(context);
-			this.blockMemoryStore = new BlockMemoryStore(context);
+			this.TransactionIndex = new TransactionToBlockItemIndex(this.context);
+			this.blockMemoryStore = new BlockMemoryStore(this.context);
+			this.AlternateTips = new List<ChainedBlock>();
 		}
 
 		public void ReIndexStore()
@@ -34,68 +37,78 @@ namespace StratisMinter.Store
 			this.LastIndexedBlock = this.FindLastIndexedBlock();
 		}
 
-		public bool ValidateBlock(Block block)
+		public bool InAnyTip(uint256 hash)
 		{
-			ChainedBlock chainedBlock;
-			return this.ValidateBlock(block, out chainedBlock);
-		}
+			// check if a block hash exists is any of the tips
+			if (this.Contains(hash))
+				return true;
 
-		public bool ValidateBlock(Block block, out ChainedBlock chainedBlock)
-		{
-			chainedBlock = this.GetBlock(block.GetHash());
-			if (chainedBlock == null)
+			foreach (var alternateTip in this.AlternateTips)
 			{
-				// this might be a new mined block 
-				// look for the previous chained block 
-				// and try to validate it, if its valid 
-				// the caller should set it as a new tip.
-				var prevChainedBlock = this.GetBlock(block.Header.HashPrevBlock);
-				if (prevChainedBlock == null)
-					return false;
-
-				chainedBlock = new ChainedBlock(block.Header, block.GetHash(), prevChainedBlock);
+				if (alternateTip.FindAncestorOrSelf(hash) != null)
+					return true;
 			}
 
-			if (!block.Header.PosParameters.IsSet())
-				chainedBlock.Header.PosParameters = block.SetPosParams();
+			return false;
+		}
 
-			// ensure the previous chainedBlock has
-			// the POS parameters set if not load its 
-			// block and set the pos params
-			var prevChained = chainedBlock.Previous;
-			if (prevChained != null && !prevChained.Header.PosParameters.IsSet())
+		public bool SetLongestTip(ChainedBlock chainedBlock)
+		{
+			// assume for now this is only called form one thread
+
+			// assume the tip is the longest
+			if (chainedBlock.Previous.HashBlock == this.Tip.HashBlock)
 			{
-				var prevBlock = this.GetFullBlock(prevChained.HashBlock);
-				prevChained.Header.PosParameters = prevBlock.Header.PosParameters;
+				this.SetTip(chainedBlock);
+				return true;
+			}
+		
+			// first add the new block to the chains
+			var prev = this.AlternateTips.FirstOrDefault(t => chainedBlock.Previous.HashBlock == t.HashBlock);
+
+			if (prev == null)
+			{
+				// a new chain?
+				this.AlternateTips.Add(chainedBlock);
+			}
+			else
+			{
+				// append to an existing chain
+				this.AlternateTips.Remove(prev);
+				this.AlternateTips.Add(chainedBlock);
 			}
 
-			return BlockValidator.CheckAndComputeStake(this, this, this, this, chainedBlock, block);
+			//return the longest block or the tip if its longer
+			var longest = this.AlternateTips.OrderByDescending(o => o.Height).FirstOrDefault();
+			longest = longest.Height > this.Tip.Height ? longest : this.Tip;
+
+			//todo: use block trust instead of height
+			// check and set the tip, else push to pending blocks
+			if (longest.Height > this.Tip.Height)
+			{
+				// set new tip and persist the block
+				var oldTip = this.SetTip(longest);
+
+				if (oldTip.HashBlock != longest.Previous.HashBlock)
+				{
+					// push the old tip to a possible alternate chain
+					if (!this.AlternateTips.Remove(chainedBlock))
+						throw new InvalidBlockException(); // this should not happen
+					this.AlternateTips.Add(oldTip);
+				}
+
+				return true;
+			}
+
+			return false;
 		}
 
-		public void AddBlock(Block block, ChainedBlock chainedBlock)
+		public void AddToBlockStore(Block block, ChainedBlock chainedBlock)
 		{
-		    this.indexStore.Put(new StakeBlock {Block = block, Stake = block.Header.PosParameters});
+			this.TransactionIndex.Add(block);
+			this.indexStore.Put(new StakeBlock {Block = block, Stake = block.Header.PosParameters});
 			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
 			this.LastIndexedBlock = chainedBlock;
-			this.TransactionIndex.Add(block);
-		}
-
-		public bool ValidateAndAddBlock(Block block)
-		{
-			// before adding a block it must be validated
-			// so  it makes sense to group the 
-			// functionality together in one place
-
-			ChainedBlock chainedBlock;
-			if (!this.ValidateBlock(block, out chainedBlock))
-				return false;
-			
-			this.indexStore.Put(new StakeBlock { Block = block, Stake = block.Header.PosParameters });
-			this.TransactionIndex.Add(block);
-			this.blockMemoryStore.Add(block, chainedBlock.HashBlock);
-			this.LastIndexedBlock = chainedBlock;
-
-			return true;
 		}
 
 		public Block GetFullBlock(uint256 blockId)

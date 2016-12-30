@@ -34,7 +34,7 @@ namespace StratisMinter.Services
 		public uint256 Blokckid;
 		public uint256 Transactionid;
 		public TxOut TxOut;
-		public bool Spent;
+		public uint256 SpentTransactionid;
 		public int OutputIndex;
 		public Transaction Transaction;
 		public PubKey PubKey;
@@ -45,21 +45,28 @@ namespace StratisMinter.Services
 			stream.ReadWrite(ref this.Blokckid);
 			stream.ReadWrite(ref this.Transactionid);
 			stream.ReadWrite(ref this.TxOut);
-			stream.ReadWrite(ref this.Spent);
+			stream.ReadWrite(ref this.SpentTransactionid);
 			stream.ReadWrite(ref this.OutputIndex);
-			stream.ReadWrite(ref this.PubKey);
+
+			var bytes = stream.Serializing ? this.PubKey.ToBytes() : new byte[0];
+			stream.ReadWriteAsVarString(ref bytes);
+			if (!stream.Serializing)
+				this.PubKey = new PubKey(bytes);
 		}
 	}
 
 	public class Wallet : IBitcoinSerializable
 	{
-		public List<WalletTx> WalletsList;
+		public ConcurrentDictionary<uint256, WalletTx> WalletsList;
 		public uint256 LastIndexBlock;
 
 		public void ReadWrite(BitcoinStream stream)
 		{
 			stream.ReadWrite(ref this.LastIndexBlock);
-			stream.ReadWrite(ref this.WalletsList);
+			var list = WalletsList?.Values.ToList() ?? new List<WalletTx>();
+			stream.ReadWrite(ref list);
+			if (!stream.Serializing)
+				this.WalletsList = new ConcurrentDictionary<uint256, WalletTx>(list.Select(l => new KeyValuePair<uint256, WalletTx>(l.Blokckid, l)));
 		}
 	}
 
@@ -76,20 +83,19 @@ namespace StratisMinter.Services
 
 		public WalletStore(Context context) : base(context)
 		{
-			this.Wallet = new Wallet {WalletsList = new List<WalletTx>()};
+			this.Wallet = new Wallet {WalletsList = new ConcurrentDictionary<uint256, WalletTx>()};
 			this.KeyBag = new KeyBag {Keys = new List<Key>()};
 		}
 
 		public Money GetBalance()
 		{
-			return this.Wallet.WalletsList.Where(s => !s.Spent).Sum(s => s.TxOut.Value);
+			return this.Wallet.WalletsList.Values.Where(s => s.SpentTransactionid != uint256.Zero).Sum(s => s.TxOut.Value);
 		}
 
-		public Key GetKey(PubKey pubKey)
+		public Key GetKey(BitcoinAddress pubKey)
 		{
-			return this.KeyBag.Keys.Single(k => k.PubKey == pubKey);
+			return this.KeyBag.Keys.Single(k => k.PubKey.GetAddress(this.Context.Network) == pubKey);
 		}
-
 
 		public bool CreateAndSaveKeyBag(string password, Key key)
 		{
@@ -172,7 +178,7 @@ namespace StratisMinter.Services
 
 		public void LoadTransactions()
 		{
-			foreach (var walletTx in this.Wallet.WalletsList.Where(t => t.Transaction == null))
+			foreach (var walletTx in this.Wallet.WalletsList.Values.Where(t => t.Transaction == null))
 			{
 				var trx = this.Context.ChainIndex.Get(walletTx.Transactionid);
 
@@ -193,17 +199,23 @@ namespace StratisMinter.Services
 		{
 			this.walletStore = walletStore;
 			this.blocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
-			this.Pubkeys = new Lazy<List<PubKey>>(GetPubKeys);
+			this.Pubkeys = new Lazy<Dictionary<PubKey, BitcoinPubKeyAddress>>(GetPubKeys);
 		}
 
-		private List<PubKey> GetPubKeys()
+		private Dictionary<PubKey, BitcoinPubKeyAddress> GetPubKeys()
 		{
-			return this.walletStore.Wallet.WalletsList.Select(w => w.PubKey)
-			.Concat(this.walletStore.KeyBag.Keys.Select(s => s.PubKey))
-			.Distinct().ToList();
+			var dictionary = new Dictionary<PubKey, BitcoinPubKeyAddress>();
+
+			foreach (var walletTx in this.walletStore.Wallet.WalletsList.Values)
+				dictionary.TryAdd(walletTx.PubKey, walletTx.PubKey.GetAddress(this.Context.Network));
+
+			foreach (var key in this.walletStore.KeyBag.Keys)
+				dictionary.TryAdd(key.PubKey, key.PubKey.GetAddress(this.Context.Network));
+
+			return dictionary;
 		}
 
-		private Lazy<List<PubKey>> Pubkeys { get; set; }
+		private Lazy<Dictionary<PubKey, BitcoinPubKeyAddress>> Pubkeys { get; set; }
 
 		protected override void Work()
 		{			
@@ -219,6 +231,33 @@ namespace StratisMinter.Services
 				var block = this.blocksToCheck.Take(this.Cancellation.Token);
 
 				this.ProcessesBlock(block);
+
+				// ride the new block added event
+				if (!this.Context.DownloadMode)
+					this.ValidateBalnce();
+			}
+		}
+
+		public void ValidateBalnce()
+		{
+			// validate the balance in the wallet is still correct
+			// a block we mined may have become orphaned and the
+			// wallet balance needs to be updated accordingly
+			var blocks = this.walletStore.Wallet.WalletsList.Keys;
+
+			foreach (var blockid in blocks)
+			{
+				if (this.Context.ChainIndex.GetBlock(blockid) == null)
+				{
+					WalletTx walletTx;
+					if (this.walletStore.Wallet.WalletsList.TryRemove(blockid, out walletTx))
+					{
+						// mark the previous output as unspent
+						var unspent = this.walletStore.Wallet.WalletsList.Values.FirstOrDefault(f => f.SpentTransactionid == walletTx.Transactionid);
+						if (unspent != null)
+							unspent.SpentTransactionid = uint256.Zero;
+					}
+				}
 			}
 		}
 
@@ -240,13 +279,13 @@ namespace StratisMinter.Services
 				// check all inputs
 				foreach (var trxInput in trx.Inputs)
 				{
-					var item = this.walletStore.Wallet.WalletsList.FirstOrDefault(w =>
+					var item = this.walletStore.Wallet.WalletsList.Values.FirstOrDefault(w =>
 					w.Transactionid == trxInput.PrevOut.Hash &&
 					w.OutputIndex == trxInput.PrevOut.N);
 
 					if (item != null)
 					{
-						item.Spent = true;
+						item.SpentTransactionid = trx.GetHash();
 						found = true;
 					}
 				}
@@ -255,21 +294,27 @@ namespace StratisMinter.Services
 				var index = 0;
 				foreach (var output in trx.Outputs)
 				{
-					if (output.ScriptPubKey.GetDestinationPublicKeys().Any(a => pubKeys.Contains(a)))
+					var outPubKey = output.ScriptPubKey.GetDestinationAddress(this.Context.Network);
+					var pubKey = pubKeys.Where(p => p.Value == outPubKey).Select(s => s.Key).FirstOrDefault();
+
+					if (pubKey != null)
 					{
 						var trxhash = trx.GetHash();
+						var blockhash = block.GetHash();
 
 						// add idempotent behaviour to this logic
-						if (this.walletStore.Wallet.WalletsList.Any(w => w.Transactionid == trxhash))
+						if (this.walletStore.Wallet.WalletsList.Values.Any(w => w.Transactionid == trxhash))
 							continue;
 						
-						this.walletStore.Wallet.WalletsList.Add(new WalletTx
+						this.walletStore.Wallet.WalletsList.TryAdd(blockhash, new WalletTx
 						{
+							Blokckid = blockhash,
 							Transaction = trx,
 							TxOut = output,
 							Transactionid = trxhash,
+							SpentTransactionid = uint256.Zero,
 							OutputIndex = index,
-							PubKey = pubKeys.First(f => f == output.ScriptPubKey.GetDestinationPublicKeys().First()) // for now deal with a single pub key
+							PubKey = pubKey // for now deal with a single pub key
 						});
 
 						found = true;
@@ -330,7 +375,7 @@ namespace StratisMinter.Services
 		{
 			var vCoins = new List<Output>();
 
-			foreach (var pcoin in this.walletStore.Wallet.WalletsList)
+			foreach (var pcoin in this.walletStore.Wallet.WalletsList.Values)
 			{
 				int nDepth = this.GetDepthInMainChain(pcoin);
 				if (nDepth < 1)
@@ -352,7 +397,7 @@ namespace StratisMinter.Services
 					continue;
 
 				for (int i = 0; i < pcoin.Transaction.Outputs.Count; i++)
-					if (!pcoin.Spent && pcoin.TxOut.Value >= this.minimumInputValue)
+					if (pcoin.SpentTransactionid == uint256.Zero && pcoin.TxOut.Value >= this.minimumInputValue)
 						vCoins.Add(new Output {Depth = nDepth, WalletTx = pcoin});
 			}
 
@@ -459,11 +504,13 @@ namespace StratisMinter.Services
 						// calculate the key type
 						if (PayToPubkeyTemplate.Instance.CheckScriptPubKey(scriptPubKeyKernel))
 						{
-							key = this.walletStore.GetKey(scriptPubKeyKernel.GetDestinationPublicKeys().First());
+							var outPubKey = scriptPubKeyKernel.GetDestinationAddress(this.Context.Network);
+							key = this.walletStore.GetKey(outPubKey);
 						}
 						else if (PayToPubkeyHashTemplate.Instance.CheckScriptPubKey(scriptPubKeyKernel))
 						{
-							key = this.walletStore.GetKey(scriptPubKeyKernel.GetDestinationPublicKeys().First());
+							var outPubKey = scriptPubKeyKernel.GetDestinationAddress(this.Context.Network);
+							key = this.walletStore.GetKey(outPubKey);
 						}
 						else
 						{

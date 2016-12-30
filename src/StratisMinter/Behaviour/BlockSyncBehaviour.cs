@@ -107,7 +107,7 @@ namespace StratisMinter.Behaviour
 			var message = new GetDataPayload();
 			foreach (var hash in hashes)
 			{
-				if (this.blockSyncHub.ChainIndex.GetBlock(hash) == null)
+				if (!this.blockSyncHub.ChainIndex.Contains(hash))
 				{
 					message.Inventory.Add(new InventoryVector()
 					{

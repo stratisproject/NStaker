@@ -379,6 +379,8 @@ namespace StratisMinter
 			for (var pindex = pindexFrom; pindex != null && pindexFrom.Height - pindex.Height < maxDepth; pindex = pindex.Previous)
 			{
 				var block = blockStore.GetBlock(pindex.HashBlock);
+				if (block == null)
+					return false;
 				if (block.Transactions.Any(b => b.GetHash() == hashPrev)) //pindex->nBlockPos == txindex.pos.nBlockPos && pindex->nFile == txindex.pos.nFile)
 				{
 					actualDepth = pindexFrom.Height - pindex.Height;

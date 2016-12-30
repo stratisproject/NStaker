@@ -52,12 +52,14 @@ namespace StratisMinter
     {
 		private readonly Context context;
 	    private readonly LogFilter logFilter;
+	    private readonly WalletStore walletStore;
 	    private readonly ILogger logger;
 
-		public Logger(Context context, ILoggerFactory loggerFactory, LogFilter logFilter) : base(context)
+		public Logger(Context context, ILoggerFactory loggerFactory, LogFilter logFilter, WalletStore walletStore) : base(context)
 		{
 			this.context = context;
 			this.logFilter = logFilter;
+			this.walletStore = walletStore;
 			this.logger = loggerFactory.CreateLogger<Staker>();
 		}
 
@@ -84,7 +86,10 @@ namespace StratisMinter
 			builder.AppendLine($"ConnectedNodes = \t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
 			builder.AppendLine($"HeaderTip = \t\t {this.context.ChainIndex?.Tip?.Height}");
 			builder.AppendLine($"IndexedBlock = \t\t {this.context.ChainIndex?.LastIndexedBlock?.Height}");
-		    if (this.context.DownloadMode)
+			builder.AppendLine("==== Staking ====");
+			builder.AppendLine($"Balance = \t\t {this.walletStore.GetBalance()}");
+		    builder.AppendLine($"Address = \t\t {string.Join(",", this.walletStore.KeyBag.Keys.Select(s => s.PubKey.ToString(this.context.Network)).ToList())}");
+			if (this.context.DownloadMode)
 		    {
 			    builder.AppendLine("==== Download Perf ====");
 			    builder.AppendLine($"CurrentBlock = \t\t {this.Context.Counter.BlockCount}");

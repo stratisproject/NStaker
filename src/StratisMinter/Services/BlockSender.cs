@@ -33,6 +33,7 @@ namespace StratisMinter.Services
 		{
 			while (this.NotCanceled())
 			{
+				return;
 				// this method blocks
 				this.WaitForDownLoadMode();
 

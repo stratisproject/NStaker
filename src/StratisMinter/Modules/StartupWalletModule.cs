@@ -73,7 +73,7 @@ namespace StratisMinter.Modules
 				// ensure all previous pub keys have 
 				// the corresponding private key
 
-				var pubKeys = this.walletStore.Wallet.WalletsList.Select(s => s.PubKey).Distinct();
+				var pubKeys = this.walletStore.Wallet.WalletsList.Values.Select(s => s.PubKey).Distinct();
 				var prvtoPub = this.walletStore.KeyBag.Keys.Select(s => s.PubKey);
 				if (pubKeys.Any(p => !prvtoPub.Contains(p)))
 				{
