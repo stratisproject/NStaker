@@ -19,7 +19,7 @@ namespace StratisMinter.Store
 
 		public TransactionToBlockItemIndex TransactionIndex { get; private set; }
 		public ChainedBlock LastIndexedBlock { get; private set; }
-		public List<ChainedBlock> AlternateTips { get; private set; }
+		public Dictionary<uint256, ChainedBlock> AlternateTips { get; private set; }
 
 		public void Initialize(Context context)
 		{
@@ -28,7 +28,7 @@ namespace StratisMinter.Store
 			this.indexStore = new IndexedStakeBlockStore(new InMemoryNoSqlRepository(), store);
 			this.TransactionIndex = new TransactionToBlockItemIndex(this.context);
 			this.blockMemoryStore = new BlockMemoryStore(this.context);
-			this.AlternateTips = new List<ChainedBlock>();
+			this.AlternateTips = new Dictionary<uint256, ChainedBlock>();
 		}
 
 		public void ReIndexStore()
@@ -43,13 +43,23 @@ namespace StratisMinter.Store
 			if (this.Contains(hash))
 				return true;
 
-			foreach (var alternateTip in this.AlternateTips)
-			{
-				if (alternateTip.FindAncestorOrSelf(hash) != null)
-					return true;
-			}
+			if (this.AlternateTips.ContainsKey(hash))
+				return true;
 
 			return false;
+		}
+
+		public ChainedBlock GetAnyTip(uint256 hash)
+		{
+			// check if a block hash exists is any of the tips
+			var chainedBlock = this.GetBlock(hash);
+			if (chainedBlock != null)
+				return chainedBlock;
+
+			if (this.AlternateTips.TryGetValue(hash, out chainedBlock))
+				return chainedBlock;
+
+			return null;
 		}
 
 		public bool SetLongestTip(ChainedBlock chainedBlock)
@@ -62,24 +72,13 @@ namespace StratisMinter.Store
 				this.SetTip(chainedBlock);
 				return true;
 			}
-		
-			// first add the new block to the chains
-			var prev = this.AlternateTips.FirstOrDefault(t => chainedBlock.Previous.HashBlock == t.HashBlock);
 
-			if (prev == null)
-			{
-				// a new chain?
-				this.AlternateTips.Add(chainedBlock);
-			}
-			else
-			{
-				// append to an existing chain
-				this.AlternateTips.Remove(prev);
-				this.AlternateTips.Add(chainedBlock);
-			}
+			// add the new block to the optional alternative tips
+			if(!this.AlternateTips.TryAdd(chainedBlock.HashBlock, chainedBlock))
+				throw new InvalidBlockException(); //this should never happen
 
-			//return the longest block or the tip if its longer
-			var longest = this.AlternateTips.OrderByDescending(o => o.Height).FirstOrDefault();
+			// return the longest block or the tip if its longer
+			var longest = this.AlternateTips.Values.OrderByDescending(o => o.Height).FirstOrDefault();
 			longest = longest.Height > this.Tip.Height ? longest : this.Tip;
 
 			//todo: use block trust instead of height
@@ -89,17 +88,17 @@ namespace StratisMinter.Store
 				// set new tip and persist the block
 				var oldTip = this.SetTip(longest);
 
-				if (oldTip.HashBlock != longest.Previous.HashBlock)
-				{
-					// push the old tip to a possible alternate chain
-					if (!this.AlternateTips.Remove(chainedBlock))
-						throw new InvalidBlockException(); // this should not happen
-					this.AlternateTips.Add(oldTip);
-				}
-
+				// add the old tip to alt tips just in case 
+				// it becomes part of a longer chain later
+				this.AlternateTips.TryAdd(oldTip.HashBlock, oldTip);
 				return true;
 			}
 
+			// remove old tips
+			foreach (var alternateTip in this.AlternateTips.Values)
+				if (this.Height - alternateTip.Height > 2000)
+					this.AlternateTips.Remove(alternateTip.HashBlock);
+			
 			return false;
 		}
 

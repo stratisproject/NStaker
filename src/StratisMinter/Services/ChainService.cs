@@ -9,14 +9,15 @@ using StratisMinter.Store;
 
 namespace StratisMinter.Services
 {
-	public class ChainService : BackgroundWorkItem 
+	public class ChainService : BackgroundWorkItem
 	{
 		private readonly NodeConnectionService nodeConnectionService;
 		private readonly ILogger logger;
 
 		public ChainIndex ChainIndex { get; }
 
-		public ChainService(Context context, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory) : base(context)
+		public ChainService(Context context, NodeConnectionService nodeConnectionService, ILoggerFactory loggerFactory)
+			: base(context)
 		{
 			this.ChainIndex = this.Context.ChainIndex;
 			this.nodeConnectionService = nodeConnectionService;
@@ -81,8 +82,8 @@ namespace StratisMinter.Services
 				{
 					if (pindexPrevStake != null)
 					{
-						dStakeKernelsTriedAvg += 1;//GetDifficulty(pindexPrevStake) * 4294967296.0;
-						nStakesTime += (int)pindexPrevStake.Header.Time - (int)pindex.Header.Time;
+						dStakeKernelsTriedAvg += this.GetDifficulty(pindexPrevStake)*4294967296.0;
+						nStakesTime += (int) pindexPrevStake.Header.Time - (int) pindex.Header.Time;
 						nStakesHandled++;
 					}
 					pindexPrevStake = pindex;
@@ -94,7 +95,7 @@ namespace StratisMinter.Services
 			double result = 0;
 
 			if (nStakesTime > 0)
-				result = dStakeKernelsTriedAvg / nStakesTime;
+				result = dStakeKernelsTriedAvg/nStakesTime;
 
 			if (BlockValidator.IsProtocolV2(this.ChainIndex.Height))
 				result *= BlockValidator.STAKE_TIMESTAMP_MASK + 1;
@@ -102,5 +103,35 @@ namespace StratisMinter.Services
 			return result;
 		}
 
+		public double GetDifficulty(ChainedBlock blockindex)
+		{
+			// Floating point number that is a multiple of the minimum difficulty,
+			// minimum difficulty = 1.0.
+			if (blockindex == null)
+			{
+				if (this.ChainIndex.Tip == null)
+					return 1.0;
+				else
+					blockindex = BlockValidator.GetLastBlockIndex(this.ChainIndex.Tip, false);
+			}
+
+			var nShift = (blockindex.Header.Bits >> 24) & 0xff;
+
+			double dDiff =
+				(double) 0x0000ffff/(double) (blockindex.Header.Bits & 0x00ffffff);
+
+			while (nShift < 29)
+			{
+				dDiff *= 256.0;
+				nShift++;
+			}
+			while (nShift > 29)
+			{
+				dDiff /= 256.0;
+				nShift--;
+			}
+
+			return dDiff;
+		}
 	}
 }

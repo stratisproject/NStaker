@@ -94,13 +94,20 @@ namespace StratisMinter.Services
 						if (orphan != null)
 						{
 							this.orphanBlocks.Remove(orphan.BlockHash);
-							this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubBroadcastItem { Block = orphan.Block });
+							this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem { Block = orphan.Block });
 						}
+
+						// notify the wallet if the new block
+						this.walletWorker.AddBlock(receivedBlock.Block);
 					}
 
 					// remove it form orphan blocks if its there
 					if (this.orphanBlocks.ContainsKey(blockHash))
 						this.orphanBlocks.Remove(blockHash);
+
+					// Relay inventory, but don't relay old inventory during initial block download
+					if (!this.Context.DownloadMode)
+						this.BlockSyncHub.BroadcastBlockInventory(new[] {blockHash});
 
 					continue;
 				}
@@ -162,7 +169,7 @@ namespace StratisMinter.Services
 
 							// ppcoin: getblocks may not obtain the ancestor block rejected
 							// earlier by duplicate-stake check so we ask for it again directly
-							node.SendMessage(new InvPayload(InventoryType.MSG_BLOCK, block.Header.HashPrevBlock));
+							//node.SendMessage(new InvPayload(InventoryType.MSG_BLOCK, block.Header.HashPrevBlock));
 						}
 					}
 				}
@@ -272,7 +279,10 @@ namespace StratisMinter.Services
 			//if (!Checkpoints::CheckHardened(nHeight, hash))
 			//	return DoS(100, error("AcceptBlock() : rejected by hardened checkpoint lock-in at %d", nHeight));
 
-			var prevChainedBlock = this.chainIndex.GetBlock(block.Header.HashPrevBlock);
+			var prevChainedBlock = this.chainIndex.GetAnyTip(block.Header.HashPrevBlock);
+			if(prevChainedBlock == null)
+				throw new InvalidBlockException();
+
 			chainedBlock = new ChainedBlock(block.Header, blockHash, prevChainedBlock);
 
 			if (!block.Header.PosParameters.IsSet())

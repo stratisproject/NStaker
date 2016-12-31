@@ -11,11 +11,41 @@ using StratisMinter.Store;
 
 namespace StratisMinter.Behaviour
 {
-	public class HubBroadcastItem
+	public class HubException : Exception
 	{
+		public HubException()
+		{
+		}
+
+		public HubException(string message) : base(message)
+		{
+		}
+	}
+
+	public abstract class HubItem<T> where T : Payload
+	{
+		public Node Node { get; set; }
 		public BlockSyncBehaviour Behaviour { get; set; }
-		public Block Block { get; set; }
+		public T Payload { get; set; }
 		public int Attempts { get; set; }
+	}
+
+	public class HubGetDataItem : HubItem<GetDataPayload>
+	{
+	}
+
+	public class HubBroadcastItem : HubItem<Payload>
+	{
+	}
+
+	public class HubReceiveBlockItem : HubItem<BlockPayload>
+	{
+		public Block Block { get; set; }
+	}
+
+	public class RequestCounter
+	{
+		public int Count;
 	}
 
 	/// <summary>
@@ -28,80 +58,36 @@ namespace StratisMinter.Behaviour
 		public ILogger Logger { get; }
 
 		public ConcurrentDictionary<BlockSyncBehaviour, Node> Behaviours { get; }
-		public BlockingCollection<HubBroadcastItem> BroadcastBlocks { get; }
-		public BlockingCollection<HubBroadcastItem> ReceiveBlocks { get; }
-
-		private readonly List<Task> runningTasks;
+		public BlockingCollection<HubBroadcastItem> BroadcastItems { get; }
+		public BlockingCollection<HubGetDataItem> GetDataItems { get; }
+		public BlockingCollection<HubReceiveBlockItem> ReceiveBlocks { get; }
+		public ConcurrentDictionary<uint256, RequestCounter> RequestCount { get; }
 		public ChainIndex ChainIndex { get; }
+		public Context Context { get; set; }
 
 		public BlockSyncHub(Context context, ILoggerFactory loggerFactory) 
 		{
 			this.Context = context;
 			this.ChainIndex = context.ChainIndex;
-			this.runningTasks = new List<Task>();
 			this.Behaviours = new ConcurrentDictionary<BlockSyncBehaviour, Node>();
-			this.BroadcastBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
-			this.ReceiveBlocks = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
+			this.BroadcastItems = new BlockingCollection<HubBroadcastItem>(new ConcurrentQueue<HubBroadcastItem>());
+			this.ReceiveBlocks = new BlockingCollection<HubReceiveBlockItem>(new ConcurrentQueue<HubReceiveBlockItem>());
+			this.GetDataItems = new BlockingCollection<HubGetDataItem>(new ConcurrentQueue<HubGetDataItem>());
 			this.Logger = loggerFactory.CreateLogger<BlockSyncHub>();
-
+			this.RequestCount = new ConcurrentDictionary<uint256, RequestCounter>();
 		}
 
-		public Context Context { get; set; }
 
-		public BlockSyncHub StartBroadcasting()
+		public void BroadcastBlockInventory(IEnumerable<uint256> hash)
 		{
-			// move this to be its own background worker
-
-			var task = Task.Factory.StartNew(() =>
-			{
-				try
-				{
-					while (!this.Context.DownloadMode && !this.Context.CancellationToken.IsCancellationRequested)
-					{
-						// take from the blocking collection 
-						var broadcastItem = this.BroadcastBlocks.Take(this.Context.CancellationToken);
-
-						// if no behaviours are found we wait for behaviours
-						// this is so we don't lose the block
-						while (this.Behaviours.Empty())
-							this.Context.CancellationToken.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
-
-						foreach (var behaviour in this.Behaviours)
-						{
-							// check if the behaviour is not the one that 
-							// queue the block, in that case we don't broadcast back. 
-							if (!behaviour.Key.Equals(broadcastItem.Behaviour))
-								behaviour.Key.Broadcast(broadcastItem.Block);
-						}
-					}
-				}
-				catch (OperationCanceledException)
-				{
-					// we are done here
-				}
-
-				// the hub is global so it listens to the 
-				// global cancelation token 
-			}, this.Context.CancellationToken, TaskCreationOptions.LongRunning, this.Context.TaskScheduler);
-
-
-			this.runningTasks.Add(task);
-			return this;
-		}
-
-		public void AskBlocks(IEnumerable<uint256> blockids)
-		{
-			var invs = blockids.Select(blockid => new InventoryVector()
+			var invs = hash.Select(innerHash => new InventoryVector()
 			{
 				Type = InventoryType.MSG_BLOCK,
-				Hash = blockid
+				Hash = innerHash
 			});
 
-			var message = new GetDataPayload(invs.ToArray());
-
-			// for now try to ask 3 nodes for blocks
-			foreach (var behaviour in Behaviours.Values.Take(3))
-				behaviour?.SendMessage(message);
+			foreach (var inv in invs)
+				this.BroadcastItems.TryAdd(new HubBroadcastItem {Payload = inv});
 		}
 	}
 }

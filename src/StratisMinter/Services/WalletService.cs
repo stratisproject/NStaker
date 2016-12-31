@@ -646,5 +646,45 @@ namespace StratisMinter.Services
 		/** The maximum size for mined blocks */
 		public const int MAX_BLOCK_SIZE_GEN = MAX_BLOCK_SIZE / 2;
 
+		public ulong GetStakeWeight()
+		{
+			// Choose coins to use
+			var nBalance = this.walletStore.GetBalance();
+
+			if (nBalance <= this.reserveBalance)
+				return 0;
+
+			List<WalletTx> vwtxPrev = new List<WalletTx>();
+
+			List<WalletTx> setCoins;
+			long nValueIn = 0;
+
+			if (!SelectCoinsForStaking(nBalance - this.reserveBalance, (uint) DateTime.UtcNow.ToUnixTimestamp(), out setCoins, out nValueIn))
+				return 0;
+
+			if (setCoins.Empty())
+				return 0;
+
+			ulong nWeight = 0;
+
+			var nCurrentTime = (uint) DateTime.UtcNow.ToUnixTimestamp();
+
+			foreach (var pcoin in setCoins)
+			{
+				if (BlockValidator.IsProtocolV3((int) nCurrentTime))
+				{
+					if (this.GetDepthInMainChain(pcoin) >= BlockValidator.StakeMinConfirmations)
+					nWeight += pcoin.TxOut.Value;
+				}
+				else
+				{
+					if (nCurrentTime - pcoin.Transaction.Time > BlockValidator.StakeMinAge)
+						nWeight += pcoin.TxOut.Value;
+				}
+			}
+
+			return nWeight;
+		}
+
 	}
 }

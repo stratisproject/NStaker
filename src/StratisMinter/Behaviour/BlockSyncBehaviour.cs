@@ -32,12 +32,14 @@ namespace StratisMinter.Behaviour
 
 		public bool CanRespondToInvPayload { get; set; }
 
+		public bool CanRespondeToGetDataPayload { get; set; }
+
 		public BlockSyncBehaviour(BlockSyncHub hub)
 		{
 			this.blockSyncHub = hub;
 			this.cancellation = CancellationTokenSource.CreateLinkedTokenSource(new[] { this.blockSyncHub.Context.CancellationToken });
 			this.CanRespondToGetBlocksPayload = true;
-			this.CanRespondToGetBlocksPayload = true;
+			this.CanRespondeToGetDataPayload = true;
 			this.CanRespondToHeadersPayload = true;
 			this.CanRespondToInvPayload = true;
 		}
@@ -52,8 +54,8 @@ namespace StratisMinter.Behaviour
 
 		private void AttachedNode_MessageReceived(Node node, IncomingMessage message)
 		{
-			//this.blockSyncHub.Logger.LogInformation(
-			//	$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
+			this.blockSyncHub.Logger.LogInformation(
+				$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
 
 			var getBlocksPayload = message.Message.Payload as GetBlocksPayload;
 			if (this.CanRespondToGetBlocksPayload && getBlocksPayload != null)
@@ -70,6 +72,20 @@ namespace StratisMinter.Behaviour
 			var invPayload = message.Message.Payload as InvPayload;
 			if (this.CanRespondToInvPayload && invPayload != null)
 				this.RespondToInvPayload(node, invPayload);
+
+			var getDataPayload = message.Message.Payload as GetDataPayload;
+			if (this.CanRespondeToGetDataPayload && getDataPayload != null)
+				this.RespondToGetDataPayload(node, getDataPayload);
+		}
+
+		private void RespondToGetDataPayload(Node node, GetDataPayload getDataPayload)
+		{
+			this.blockSyncHub.GetDataItems.TryAdd(new HubGetDataItem
+			{
+				Behaviour = this,
+				Payload = getDataPayload,
+				Node = this.AttachedNode
+			});
 		}
 
 		private void RespondToGetBlocksPayload(Node node, GetBlocksPayload getBlocksPayload)
@@ -83,7 +99,7 @@ namespace StratisMinter.Behaviour
 
 		private void RespondToBlockPayload(Node node, BlockPayload blockPayload)
 		{
-			this.blockSyncHub.ReceiveBlocks.Add(new HubBroadcastItem {Block = blockPayload.Object, Behaviour = this});
+			this.blockSyncHub.ReceiveBlocks.Add(new HubReceiveBlockItem {Payload = blockPayload, Block = blockPayload.Object, Behaviour = this});
 		}
 
 		private void RespondToHeadersPayload(Node node, HeadersPayload headersPayload)
@@ -100,6 +116,11 @@ namespace StratisMinter.Behaviour
 
 			if (message.Inventory.Any())
 				node.SendMessage(message);
+
+			RequestCounter requestCounter;
+			foreach (var vector in invPayload.Inventory)
+				if (this.blockSyncHub.RequestCount.TryGetValue(vector.Hash, out requestCounter))
+					Interlocked.Increment(ref requestCounter.Count);
 		}
 
 		private GetDataPayload CreateGetDataPayload(IEnumerable<uint256> hashes)
@@ -118,12 +139,6 @@ namespace StratisMinter.Behaviour
 			}
 
 			return message;
-		}
-
-		public void Broadcast(Block block)
-		{
-			// broadcast a block to the network
-			this.AttachedNode.SendMessage(new BlockPayload(block), this.cancellation.Token);
 		}
 
 		private void AttachedNode_StateChanged(Node node, NodeState oldState)

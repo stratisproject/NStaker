@@ -9,23 +9,10 @@ namespace StratisMinter.Services
 {
 	public class BlockSender : BackgroundWorkItem
 	{
-		private readonly NodeConnectionService nodeConnectionService;
-		private readonly ChainService chainSyncService;
-		private readonly DownloadWorker downloadWorker;
-		private readonly ChainIndex chainIndex;
-		private readonly ILogger logger;
-
 		public BlockSyncHub BlockSyncHub { get; }
 
-		public BlockSender(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService, DownloadWorker downloadWorker, ILoggerFactory loggerFactory) : base(context)
+		public BlockSender(Context context, BlockSyncHub blockSyncHub) : base(context)
 		{
-			this.nodeConnectionService = nodeConnectionService;
-			this.chainIndex = context.ChainIndex;
-			this.chainSyncService = chainSyncService;
-			this.downloadWorker = downloadWorker;
-			this.logger = loggerFactory.CreateLogger<BlockSender>();
-
 			this.BlockSyncHub = blockSyncHub;
 		}
 
@@ -33,29 +20,27 @@ namespace StratisMinter.Services
 		{
 			while (this.NotCanceled())
 			{
-				return;
 				// this method blocks
 				this.WaitForDownLoadMode();
 
-				if (this.BlockSyncHub.Behaviours.Any())
+				// take from the blocking collection 
+				var broadcastItem = this.BlockSyncHub.BroadcastItems.Take(this.Context.CancellationToken);
+
+				// if no behaviours are found we wait for behaviours
+				// this is so we don't lose the block
+				while (this.BlockSyncHub.Behaviours.IsEmpty)
+					this.Context.CancellationToken.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
+
+				// check if the behaviour is not the one that 
+				// queue the block, in that case we don't broadcast back. 
+				foreach (var behaviour in this.BlockSyncHub.Behaviours)
 				{
-					var bloksToAsk = this.chainIndex.EnumerateAfter(this.chainIndex.LastIndexedBlock).ToArray();
-
-					if (bloksToAsk.Count() > 50)
-					{
-						// use the download worker to catch up
-						this.downloadWorker.Execute();
-					}
-					else
-					{
-						this.BlockSyncHub.AskBlocks(bloksToAsk.Select(s => s.HashBlock));
-					}
+					// node exists and is equal to current don't broadcast to it
+					if(broadcastItem.Node?.Equals(behaviour.Value) ?? false)
+						continue;
+					
+					behaviour.Value.SendMessage(broadcastItem.Payload, this.Cancellation.Token);
 				}
-
-				// wait for the chain index to signal a new tip
-				// or check after an interval has passed
-				this.chainIndex.TipChangedSignal.WaitOne(TimeSpan.FromMinutes(10));
-				//this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
 			}
 		}
 	}

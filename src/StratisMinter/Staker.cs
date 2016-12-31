@@ -49,6 +49,7 @@ namespace StratisMinter
 				.AddSingleton<LoggerKeyReader>().AddSingleton<BackgroundWorkItem, LoggerKeyReader>(provider => provider.GetService<LoggerKeyReader>())
 				.AddSingleton<ChainService>().AddSingleton<BackgroundWorkItem, ChainService>(provider => provider.GetService<ChainService>())
 				.AddSingleton<WalletWorker>().AddSingleton<BackgroundWorkItem, WalletWorker>(provider => provider.GetService<WalletWorker>())
+				.AddSingleton<GetDataReceiver>().AddSingleton<BackgroundWorkItem, GetDataReceiver>(provider => provider.GetService<GetDataReceiver>())
 				// BlockingWorkItem
 				.AddSingleton<DownloadWorker>().AddSingleton<BlockingWorkItem, DownloadWorker>(provider => provider.GetService<DownloadWorker>())
 				// standalone types

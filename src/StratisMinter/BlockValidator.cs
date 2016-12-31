@@ -40,7 +40,7 @@ namespace StratisMinter
 			return IsProtocolV2(height) ? consensus.ProofOfStakeLimitV2 : consensus.ProofOfStakeLimit;
 		}
 
-		private static int GetTargetSpacing(int height)
+		public static int GetTargetSpacing(int height)
 		{
 			return IsProtocolV2(height) ? 64 : 60;
 		}
@@ -80,7 +80,7 @@ namespace StratisMinter
 		}
 
 		// find last block index up to index
-		private static ChainedBlock GetLastBlockIndex(ChainedBlock index, bool proofOfStake)
+		public static ChainedBlock GetLastBlockIndex(ChainedBlock index, bool proofOfStake)
 		{
 			if (index == null)
 				throw new ArgumentNullException(nameof(index));

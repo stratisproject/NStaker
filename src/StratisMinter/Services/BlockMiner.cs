@@ -30,7 +30,7 @@ namespace StratisMinter.Services
 		public BlockSyncHub BlockSyncHub { get; }
 
 		private readonly int minerSleep;
-		private long lastCoinStakeSearchInterval;
+		public long LastCoinStakeSearchInterval;
 
 		public BlockMiner(Context context, NodeConnectionService nodeConnectionService,
 			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker, BlockReceiver blockReceiver) : base(context)
@@ -43,14 +43,13 @@ namespace StratisMinter.Services
 			this.blockReceiver = blockReceiver;
 			this.BlockSyncHub = blockSyncHub;
 			this.minerSleep = 500; // GetArg("-minersleep", 500);
-			this.lastCoinStakeSearchInterval = 0;
+			this.LastCoinStakeSearchInterval = 0;
 		}
 
 		protected override void Work()
 		{
 			while (this.NotCanceled())
 			{
-				return;
 				// this method blocks
 				this.WaitForDownLoadMode();
 
@@ -129,7 +128,7 @@ namespace StratisMinter.Services
 						return true;
 					}
 				}
-				lastCoinStakeSearchInterval = searchTime - lastCoinStakeSearchTime;
+				this.LastCoinStakeSearchInterval = searchTime - lastCoinStakeSearchTime;
 				lastCoinStakeSearchTime = searchTime;
 			}
 
@@ -142,10 +141,10 @@ namespace StratisMinter.Services
 			uint256 hashBlock = block.GetHash();
 
 			if (!block.IsProofOfStake())
-				return;// error("CheckStake() : %s is not a proof-of-stake block", hashBlock.GetHex());
+				return; // error("CheckStake() : %s is not a proof-of-stake block", hashBlock.GetHex());
 
 			// verify hash target and signature of coinstake tx
-			if (!BlockValidator.CheckProofOfStake(this.chainIndex, this.chainIndex, this.chainIndex, pindexPrev,block.Transactions[1],
+			if (!BlockValidator.CheckProofOfStake(this.chainIndex, this.chainIndex, this.chainIndex, pindexPrev, block.Transactions[1],
 					block.Header.Bits.ToCompact(), out hashProof, out hashTarget))
 				return; // error("CheckStake() : proof-of-stake checking failed");
 
@@ -155,37 +154,16 @@ namespace StratisMinter.Services
 			//LogPrintf("out %s\n", FormatMoney(pblock->vtx[1].GetValueOut()));
 
 			// Found a solution
-
-
 			if (block.Header.HashPrevBlock != this.chainIndex.Tip.HashBlock)
 				return; // error("CheckStake() : generated block is stale");
 
-				// Track how many getdata requests this block gets
-				//{
-				//	LOCK(wallet.cs_wallet);
-				//	wallet.mapRequestCount[hashBlock] = 0;
-				//}
+			// Track how many getdata requests this block gets
+			if (!this.BlockSyncHub.RequestCount.TryAdd(block.GetHash(), new RequestCounter()))
+				return; //throw new MinedBlockException();
 
-				// Process this block the same as if we had received it from another node
-			ChainedBlock chainedBlock;
-			if (!this.blockReceiver.ProcessBlock(null, block, out chainedBlock))
-				return;// error("CheckStake() : ProcessBlock, block not accepted");
 
-			// was a newer tip discovered
-			if(this.chainIndex.Height >= chainedBlock.Height)
-				return;
-			
-			
-			// set a new tip
-			this.chainIndex.SetTip(chainedBlock);
-
-			// broadcast the block
-			this.BlockSyncHub.BroadcastBlocks.Add(new HubBroadcastItem {Block = block});
-
-			// add to local store
-			this.chainIndex.AddToBlockStore(block, chainedBlock);
-			this.walletWorker.AddBlock(block);
-
+			// Process this block the same as if we had received it from another node
+			this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem {Block = block});
 		}
 
 		private void CheckWork(Block block)

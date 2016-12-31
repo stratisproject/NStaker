@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using nStratis;
 using StratisMinter.Base;
 using StratisMinter.Services;
 
@@ -53,13 +54,22 @@ namespace StratisMinter
 		private readonly Context context;
 	    private readonly LogFilter logFilter;
 	    private readonly WalletStore walletStore;
+	    private readonly WalletService walletService;
+	    private readonly BlockMiner blockMiner;
+	    private readonly ChainService chainService;
+	    private readonly NodeConnectionService nodeConnectionService;
 	    private readonly ILogger logger;
 
-		public Logger(Context context, ILoggerFactory loggerFactory, LogFilter logFilter, WalletStore walletStore) : base(context)
+		public Logger(Context context, ILoggerFactory loggerFactory, LogFilter logFilter, WalletStore walletStore, 
+			WalletService walletService, BlockMiner blockMiner, ChainService chainService, NodeConnectionService nodeConnectionService) : base(context)
 		{
 			this.context = context;
 			this.logFilter = logFilter;
 			this.walletStore = walletStore;
+			this.walletService = walletService;
+			this.blockMiner = blockMiner;
+			this.chainService = chainService;
+			this.nodeConnectionService = nodeConnectionService;
 			this.logger = loggerFactory.CreateLogger<Staker>();
 		}
 
@@ -89,6 +99,9 @@ namespace StratisMinter
 			builder.AppendLine("==== Staking ====");
 			builder.AppendLine($"Balance = \t\t {this.walletStore.GetBalance()}");
 		    builder.AppendLine($"Address = \t\t {string.Join(",", this.walletStore.KeyBag.Keys.Select(s => s.PubKey.ToString(this.context.Network)).ToList())}");
+			builder.AppendLine($"Alt Tips = \t\t {this.context.ChainIndex.AlternateTips.Count}");
+			builder.AppendLine($"Tip hash = \t\t {this.context.ChainIndex.Tip.HashBlock}");
+			builder.AppendLine($"{this.GetStakingInfo()}");
 			if (this.context.DownloadMode)
 		    {
 			    builder.AppendLine("==== Download Perf ====");
@@ -98,5 +111,58 @@ namespace StratisMinter
 		    }
 		    return builder.ToString();
 		}
-    }
+
+		private string GetStakingInfo()
+	    {
+		    var nWeight = this.walletService.GetStakeWeight();
+
+		    if (this.blockMiner.LastCoinStakeSearchInterval != 0 && nWeight != 0)
+		    {
+
+			    var nNetworkWeight = this.chainService.GetPoSKernelPS();
+			    var nEstimateTime = BlockValidator.GetTargetSpacing(this.context.ChainIndex.Tip.Height)*nNetworkWeight/nWeight;
+
+			    string text;
+			    if (nEstimateTime < 60)
+			    {
+				    text = $"{nEstimateTime} second(s)";
+			    }
+			    else if (nEstimateTime < 60*60)
+			    {
+				    text = $"{nEstimateTime/60} minute(s)";
+			    }
+			    else if (nEstimateTime < 24*60*60)
+			    {
+				    text = $"{nEstimateTime/(60*60)} hour(s)";
+			    }
+			    else
+			    {
+				    text = $"{nEstimateTime/(60*60*24)} day(s)";
+			    }
+
+			    nWeight /= BlockValidator.COIN;
+			    nNetworkWeight /= BlockValidator.COIN;
+
+			    return
+				    $"Staking. Your weight is {nWeight} Network weight is {nNetworkWeight}Expected time to earn reward is {text}";
+		    }
+		    else
+		    {
+			    if (this.walletStore.KeyBag.Keys.Empty())
+				    return "Not staking because now keys found";
+
+				if (this.nodeConnectionService.NodesGroup.ConnectedNodes.Empty())
+				    return "Not staking because wallet is offline";
+
+				if (this.context.DownloadMode)
+				    return "Not staking because wallet is syncing";
+
+				if (nWeight == 0)
+				    return "Not staking because you don't have mature coins";
+
+			    return "Not staking";
+		    }
+	    }
+
+	}
 }
