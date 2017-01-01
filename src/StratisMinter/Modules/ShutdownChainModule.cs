@@ -27,7 +27,8 @@ namespace StratisMinter.Modules
 
 		public override void Execute()
 		{
-			this.chainSyncService.SaveToDisk();
+			// temp don't save to disk on shout down
+			//this.chainSyncService.SaveToDisk();
 
 			if (this.walletStore.Wallet.WalletsList.Any())
 				this.walletStore.Save();

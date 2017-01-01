@@ -652,7 +652,7 @@ namespace StratisMinter
 		// select a block from the candidate blocks in vSortedByTimestamp, excluding
 		// already selected blocks in vSelectedBlocks, and with timestamp up to
 		// nSelectionIntervalStop.
-		private static bool SelectBlockFromCandidates(ChainBase chainIndex, SortedDictionary<uint, uint256> sortedByTimestamp,
+		private static bool SelectBlockFromCandidates(ChainedBlock chainIndex, SortedDictionary<uint, uint256> sortedByTimestamp,
 			Dictionary<uint256, ChainedBlock> mapSelectedBlocks,
 			long nSelectionIntervalStop, ulong nStakeModifierPrev, out ChainedBlock pindexSelected)
 		{
@@ -663,7 +663,7 @@ namespace StratisMinter
 
 			foreach (var item in sortedByTimestamp)
 			{
-				var pindex = chainIndex.GetBlock(item.Value);
+				var pindex = chainIndex.FindAncestorOrSelf(item.Value);
 				if (pindex == null)
 					return false; // error("SelectBlockFromCandidates: failed to find block index for candidate block %s", item.second.ToString());
 
@@ -763,7 +763,7 @@ namespace StratisMinter
 				nSelectionIntervalStop += GetStakeModifierSelectionIntervalSection(nRound);
 
 				// select a block from the candidates of current round
-				if (!SelectBlockFromCandidates(chainIndex, sortedByTimestamp, mapSelectedBlocks, nSelectionIntervalStop, nStakeModifier, out pindex))
+				if (!SelectBlockFromCandidates(pindexPrev, sortedByTimestamp, mapSelectedBlocks, nSelectionIntervalStop, nStakeModifier, out pindex))
 					return false; // error("ComputeNextStakeModifier: unable to select block at round %d", nRound);
 
 				// write the entropy bit of the selected block
