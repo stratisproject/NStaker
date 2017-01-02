@@ -60,7 +60,7 @@ namespace StratisMinter.Services
 			{
 				this.WaitForDownLoadMode();
 
-				this.SaveToDisk();
+				//this.SaveToDisk();
 
 				this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(5));
 			}

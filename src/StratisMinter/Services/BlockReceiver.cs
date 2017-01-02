@@ -89,16 +89,17 @@ namespace StratisMinter.Services
 					{
 						this.logger.LogInformation($"Added block - height: {this.chainIndex.Tip.Height} hash: {this.chainIndex.Tip.HashBlock}");
 
-						// tip has changed check orphan blocks
-						var orphan = this.orphanBlocks.Values.FirstOrDefault(orphanBlock => orphanBlock.PreviousHash == this.chainIndex.Tip.HashBlock);
-						if (orphan != null)
-						{
-							this.orphanBlocks.Remove(orphan.BlockHash);
-							this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem { Block = orphan.Block });
-						}
-
-						// notify the wallet if the new block
+						// notify the wallet of the new block
 						this.walletWorker.AddBlock(receivedBlock.Block);
+					}
+
+					// check if this block has any orphans depending on it
+					// if yes remove from the orphan then queue to be reprocessed
+					var orphan = this.orphanBlocks.Values.FirstOrDefault(orphanBlock => orphanBlock.PreviousHash == chainedBlock.HashBlock);
+					if (orphan != null)
+					{
+						this.orphanBlocks.Remove(orphan.BlockHash);
+						this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem { Block = orphan.Block });
 					}
 
 					// remove it form orphan blocks if its there

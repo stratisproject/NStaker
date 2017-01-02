@@ -73,27 +73,25 @@ namespace StratisMinter.Store
 				return true;
 			}
 
-			// add the new block to the optional alternative tips
-			if(!this.AlternateTips.TryAdd(chainedBlock.HashBlock, chainedBlock))
-				throw new InvalidBlockException(); //this should never happen
-
-			// return the longest block or the tip if its longer
-			var longest = this.AlternateTips.Values.OrderByDescending(o => o.Height).FirstOrDefault();
-			longest = longest.Height > this.Tip.Height ? longest : this.Tip;
-
 			//todo: use block trust instead of height
 			// check and set the tip, else push to pending blocks
-			if (longest.Height > this.Tip.Height)
+			if (chainedBlock.Height > this.Tip.Height)
 			{
-				// set new tip and persist the block
-				var oldTip = this.SetTip(longest);
+				// set new tip
+				var oldTip = this.SetTip(chainedBlock);
 
 				// add the old tip to alt tips just in case 
 				// it becomes part of a longer chain later
 				this.AlternateTips.TryAdd(oldTip.HashBlock, oldTip);
 				return true;
 			}
-
+			else
+			{
+				// add the new block to the optional alternative tips
+				if (!this.AlternateTips.TryAdd(chainedBlock.HashBlock, chainedBlock))
+					throw new InvalidBlockException(); //this should never happen
+			}
+			
 			// remove old tips
 			foreach (var alternateTip in this.AlternateTips.Values)
 				if (this.Height - alternateTip.Height > 2000)

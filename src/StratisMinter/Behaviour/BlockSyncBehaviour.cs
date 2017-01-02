@@ -54,8 +54,8 @@ namespace StratisMinter.Behaviour
 
 		private void AttachedNode_MessageReceived(Node node, IncomingMessage message)
 		{
-			this.blockSyncHub.Logger.LogInformation(
-				$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
+			//this.blockSyncHub.Logger.LogInformation(
+			//	$"msg - {node.Peer.Endpoint} - {message.Message.Payload.GetType().Name} - {message.Message.Payload.Command}");
 
 			var getBlocksPayload = message.Message.Payload as GetBlocksPayload;
 			if (this.CanRespondToGetBlocksPayload && getBlocksPayload != null)
