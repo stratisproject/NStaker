@@ -110,6 +110,9 @@ namespace StratisMinter.Store
 
 		public Block GetFullBlock(uint256 blockId)
 		{
+			if (blockId == null)
+				throw new ArgumentException(nameof(blockId));
+
 			return this.blockMemoryStore.Get(blockId, () => this.indexStore.Get(blockId)?.Block);
 		}
 
@@ -151,6 +154,8 @@ namespace StratisMinter.Store
 		public Task<Transaction> GetAsync(uint256 txId)
 		{
 			var blockId = this.GetBlockHash(txId);
+			if (blockId == null)
+				return Task.FromResult((Transaction)null);
 			var block = this.GetFullBlock(blockId);
 			return Task.FromResult(block.Transactions.First(trx => trx.GetHash() == txId));
 		}

@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using nStratis;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
@@ -18,6 +21,34 @@ namespace StratisMinter.Services
 		}
 	}
 
+	public class MinerService : WorkItem
+	{
+		public ConcurrentDictionary<ChainedBlock, Block> MinedBlocks;
+
+		public MinerService(Context context) : base(context)
+		{
+			this.MinedBlocks = new ConcurrentDictionary<ChainedBlock, Block>();
+		}
+
+		public IEnumerable<Block> GetMiningBlocks()
+		{
+			return this.MinedBlocks.Where(k => k.Key.Height > this.Context.ChainIndex.Height).Select(s => s.Value);
+		}
+
+		public bool IsStaking(uint256 trxid, int outIndex)
+		{
+			foreach (var block in this.GetMiningBlocks())
+			{
+				if (block.Transactions[1].Inputs.Any(a => a.PrevOut.Hash == trxid && a.PrevOut.N == outIndex))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+	}
+
 	public class BlockMiner : BackgroundWorkItem
 	{
 		private readonly NodeConnectionService nodeConnectionService;
@@ -26,6 +57,7 @@ namespace StratisMinter.Services
 		private readonly WalletService walletService;
 		private readonly WalletWorker walletWorker;
 		private readonly BlockReceiver blockReceiver;
+		private readonly MinerService minerService;
 
 		public BlockSyncHub BlockSyncHub { get; }
 
@@ -33,7 +65,8 @@ namespace StratisMinter.Services
 		public long LastCoinStakeSearchInterval;
 
 		public BlockMiner(Context context, NodeConnectionService nodeConnectionService,
-			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker, BlockReceiver blockReceiver) : base(context)
+			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker, 
+			BlockReceiver blockReceiver, MinerService minerService) : base(context)
 		{
 			this.nodeConnectionService = nodeConnectionService;
 			this.chainIndex = context.ChainIndex;
@@ -41,9 +74,11 @@ namespace StratisMinter.Services
 			this.walletService = walletService;
 			this.walletWorker = walletWorker;
 			this.blockReceiver = blockReceiver;
+			this.minerService = minerService;
 			this.BlockSyncHub = blockSyncHub;
 			this.minerSleep = 500; // GetArg("-minersleep", 500);
 			this.LastCoinStakeSearchInterval = 0;
+
 		}
 
 		protected override void Work()
@@ -158,12 +193,28 @@ namespace StratisMinter.Services
 				return; // error("CheckStake() : generated block is stale");
 
 			// Track how many getdata requests this block gets
-			if (!this.BlockSyncHub.RequestCount.TryAdd(block.GetHash(), new RequestCounter()))
-				return; //throw new MinedBlockException();
-
+			if (!this.BlockSyncHub.RequestCount.TryAdd(hashBlock, new RequestCounter()))
+				throw new MinedBlockException();
 
 			// Process this block the same as if we had received it from another node
-			this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem {Block = block});
+			//this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem {Block = block});
+
+			ChainedBlock chainedBlock;
+			if (this.blockReceiver.ProcessBlock(null, block, out chainedBlock))
+			{
+				// add to alt tips
+				if(!this.minerService.MinedBlocks.TryAdd(chainedBlock, block))
+					throw new MinedBlockException();
+
+				// add to wallet
+				//this.walletWorker.AddBlock(block);
+
+				// let the wallet processes the transaction
+				//this.Cancellation.Token.WaitHandle.WaitOne(1000);
+
+				// broadcast it
+				this.BlockSyncHub.BroadcastBlockInventory(new[] { hashBlock });
+			}
 		}
 
 		private void CheckWork(Block block)

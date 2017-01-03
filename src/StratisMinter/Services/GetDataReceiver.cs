@@ -11,11 +11,13 @@ namespace StratisMinter.Services
 {
 	public class GetDataReceiver : BackgroundWorkItem
 	{
+		private readonly MinerService minerService;
 		public BlockSyncHub BlockSyncHub { get; }
 		private readonly ChainIndex chainIndex;
 
-		public GetDataReceiver(Context context, BlockSyncHub blockSyncHub) : base(context)
+		public GetDataReceiver(Context context, BlockSyncHub blockSyncHub, MinerService minerService) : base(context)
 		{
+			this.minerService = minerService;
 			this.BlockSyncHub = blockSyncHub;
 			this.chainIndex = context.ChainIndex;
 		}
@@ -33,7 +35,9 @@ namespace StratisMinter.Services
 				// only processes block types
 				foreach (var source in broadcastItem.Payload.Inventory.Where(inv => inv.Type == InventoryType.MSG_BLOCK))
 				{
-					var block = this.chainIndex.GetFullBlock(source.Hash);
+					var block = this.chainIndex.GetFullBlock(source.Hash) ??
+					            this.minerService.MinedBlocks.Where(k => k.Key.HashBlock == source.Hash).Select(s => s.Value).FirstOrDefault();
+
 					if (block != null)
 					{
 						// previous versions could accept sigs with high s

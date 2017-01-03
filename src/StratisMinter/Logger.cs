@@ -96,11 +96,13 @@ namespace StratisMinter
 			builder.AppendLine($"ConnectedNodes = \t {this.Service.GetService<NodeConnectionService>().NodesGroup.ConnectedNodes.Count}");
 			builder.AppendLine($"HeaderTip = \t\t {this.context.ChainIndex?.Tip?.Height}");
 			builder.AppendLine($"IndexedBlock = \t\t {this.context.ChainIndex?.LastIndexedBlock?.Height}");
-			builder.AppendLine("==== Staking ====");
-			builder.AppendLine($"Balance = \t\t {this.walletStore.GetBalance()}");
-		    builder.AppendLine($"Address = \t\t {string.Join(",", this.walletStore.KeyBag.Keys.Select(s => s.PubKey.ToString(this.context.Network)).ToList())}");
 			builder.AppendLine($"Alt Tips = \t\t {this.context.ChainIndex.AlternateTips.Count}");
 			builder.AppendLine($"Tip hash = \t\t {this.context.ChainIndex.Tip.HashBlock}");
+			builder.AppendLine("==== Staking ====");
+			builder.AppendLine($"Balance = \t\t {this.walletService.GetBalance()}");
+			builder.AppendLine($"Pending = \t\t {this.walletService.GetPendingMaturityBalance()}");
+			builder.AppendLine($"Staking = \t\t {this.walletService.GetStakeingBalance()}");
+			builder.AppendLine($"Address = \t\t {string.Join(",", this.walletStore.KeyBag.Keys.Select(s => s.PubKey.ToString(this.context.Network)).ToList())}");
 			builder.AppendLine($"{this.GetStakingInfo()}");
 			if (this.context.DownloadMode)
 		    {

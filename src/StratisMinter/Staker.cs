@@ -59,7 +59,8 @@ namespace StratisMinter
 				.AddSingleton<LogFilter>()
                 .AddSingleton<WalletService>()
 				.AddSingleton<WalletStore>()
-				
+				.AddSingleton<MinerService>()
+
 				// build
 				.BuildServiceProvider();
 

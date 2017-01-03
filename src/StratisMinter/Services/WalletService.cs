@@ -39,7 +39,6 @@ namespace StratisMinter.Services
 		public Transaction Transaction;
 		public PubKey PubKey;
 
-
 		public void ReadWrite(BitcoinStream stream)
 		{
 			stream.ReadWrite(ref this.Blokckid);
@@ -85,11 +84,6 @@ namespace StratisMinter.Services
 		{
 			this.Wallet = new Wallet {WalletsList = new ConcurrentDictionary<uint256, WalletTx>()};
 			this.KeyBag = new KeyBag {Keys = new List<Key>()};
-		}
-
-		public Money GetBalance()
-		{
-			return this.Wallet.WalletsList.Values.Where(s => s.SpentTransactionid != uint256.Zero).Sum(s => s.TxOut.Value);
 		}
 
 		public Key GetKey(BitcoinAddress pubKey)
@@ -193,11 +187,15 @@ namespace StratisMinter.Services
 	public class WalletWorker : BackgroundWorkItem
 	{
 		private readonly WalletStore walletStore;
+		private readonly WalletService walletService;
+		private readonly MinerService minerService;
 		private readonly BlockingCollection<Block> blocksToCheck;
 
-		public WalletWorker(Context context, WalletStore walletStore) : base(context)
+		public WalletWorker(Context context, WalletStore walletStore, WalletService walletService, MinerService minerService) : base(context)
 		{
 			this.walletStore = walletStore;
+			this.walletService = walletService;
+			this.minerService = minerService;
 			this.blocksToCheck = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 			this.Pubkeys = new Lazy<Dictionary<PubKey, BitcoinPubKeyAddress>>(GetPubKeys);
 		}
@@ -333,18 +331,18 @@ namespace StratisMinter.Services
 
 	public class WalletService : WorkItem
 	{
-		private readonly WalletWorker worker;
 		private readonly WalletStore walletStore;
+		private readonly MinerService minerService;
 		private readonly ChainIndex chainIndex;
 
 		private readonly long reserveBalance;
 		private readonly int coinbaseMaturity;
 		private readonly int minimumInputValue;
 
-		public WalletService(Context context, WalletWorker worker, WalletStore walletStore) : base(context)
+		public WalletService(Context context, WalletStore walletStore, MinerService minerService) : base(context)
 		{
-			this.worker = worker;
 			this.walletStore = walletStore;
+			this.minerService = minerService;
 			this.chainIndex = context.ChainIndex;
 
 			// Set reserve amount not participating in network protection
@@ -354,9 +352,70 @@ namespace StratisMinter.Services
 			this.minimumInputValue = 0;
 		}
 
+		public Money GetBalance()
+		{
+			var money = new Money(0);
+			foreach (var walletTx in this.walletStore.Wallet.WalletsList.Values)
+			{
+				// Must wait until coinbase is safely deep enough in the chain before valuing it
+				if ((walletTx.Transaction.IsCoinBase || walletTx.Transaction.IsCoinStake) && this.GetBlocksToMaturity(walletTx) > 0)
+					continue;
+
+				if (walletTx.SpentTransactionid == uint256.Zero)
+					money += walletTx.TxOut.Value;
+			}
+
+			return money;
+		}
+
+		public Money GetPendingMaturityBalance()
+		{
+			var money = new Money(0);
+			foreach (var walletTx in this.walletStore.Wallet.WalletsList.Values)
+			{
+				// Must wait until coinbase is safely deep enough in the chain before valuing it
+				if (walletTx.SpentTransactionid == uint256.Zero)
+				{
+					if (walletTx.Transaction.IsCoinStake && this.GetBlocksToMaturity(walletTx) > 0 &&
+					    this.GetDepthInMainChain(walletTx) > 0 && walletTx.SpentTransactionid == uint256.Zero)
+					{
+						 money += walletTx.TxOut.Value;
+					}
+				}
+			}
+
+			return money;
+		}
+
+		public Money GetStakeingBalance()
+		{
+			var money = new Money(0);
+			foreach (var walletTx in this.walletStore.Wallet.WalletsList.Values)
+			{
+				// Must wait until coinbase is safely deep enough in the chain before valuing it
+				if (walletTx.SpentTransactionid == uint256.Zero)
+				{
+					if (this.minerService.IsStaking(walletTx.Transactionid, walletTx.OutputIndex))
+						money += walletTx.TxOut.Value;
+				}
+			}
+
+			return money;
+		}
+
+		public ChainedBlock GetAheadMinedBlock(uint256 blockid)
+		{
+			// only if the mined block is ahead of main chain 
+			// assume its going to get included in the main chain
+			var chainedBlock = this.minerService.MinedBlocks.Where(k => k.Key.HashBlock == blockid).Select(s => s.Key).FirstOrDefault();
+			chainedBlock = (chainedBlock?.Height ?? 0) > this.chainIndex.Height ? chainedBlock : null;
+			return chainedBlock;
+		}
+
 		private int GetDepthInMainChain(WalletTx walletTx)
 		{
-			var chainedBlock = this.chainIndex.GetBlock(walletTx.Blokckid);
+			var chainedBlock = this.chainIndex.GetBlock(walletTx.Blokckid) ?? this.GetAheadMinedBlock(walletTx.Blokckid);
+
 			if (chainedBlock == null)
 				return 0;
 
@@ -396,9 +455,13 @@ namespace StratisMinter.Services
 				if (this.GetBlocksToMaturity(pcoin) > 0)
 					continue;
 
-				for (int i = 0; i < pcoin.Transaction.Outputs.Count; i++)
+				//for (int i = 0; i < pcoin.Transaction.Outputs.Count; i++)
 					if (pcoin.SpentTransactionid == uint256.Zero && pcoin.TxOut.Value >= this.minimumInputValue)
-						vCoins.Add(new Output {Depth = nDepth, WalletTx = pcoin});
+					{
+						// check if the coin sis staking
+						if (!this.minerService.IsStaking(pcoin.Transactionid, pcoin.OutputIndex))
+							vCoins.Add(new Output {Depth = nDepth, WalletTx = pcoin});
+					}
 			}
 
 			return vCoins;
@@ -463,7 +526,7 @@ namespace StratisMinter.Services
 			txNew.Outputs.Add(new TxOut(Money.Zero, new Script()));
 
 			// Choose coins to use
-			var nBalance = this.walletStore.GetBalance().Satoshi;
+			var nBalance = this.GetBalance().Satoshi;
 
 			if (nBalance <= this.reserveBalance)
 				return false;
@@ -649,7 +712,7 @@ namespace StratisMinter.Services
 		public ulong GetStakeWeight()
 		{
 			// Choose coins to use
-			var nBalance = this.walletStore.GetBalance();
+			var nBalance = this.GetBalance();
 
 			if (nBalance <= this.reserveBalance)
 				return 0;

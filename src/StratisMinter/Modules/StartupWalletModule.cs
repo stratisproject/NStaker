@@ -13,13 +13,16 @@ namespace StratisMinter.Modules
 		private readonly ILogger logger;
 		private readonly WalletStore walletStore;
 		private readonly WalletWorker walletWorker;
+		private readonly WalletService walletService;
 		private readonly LogFilter logFilter;
 
-		public StartupWalletModule(Context context,ILoggerFactory loggerFactory, WalletStore walletStore, WalletWorker walletWorker, LogFilter logFilter) : base(context)
+		public StartupWalletModule(Context context,ILoggerFactory loggerFactory, WalletStore walletStore, WalletWorker walletWorker, 
+			WalletService walletService, LogFilter logFilter) : base(context)
 		{
 			this.ChainIndex = context.ChainIndex;
 			this.walletStore = walletStore;
 			this.walletWorker = walletWorker;
+			this.walletService = walletService;
 			this.logFilter = logFilter;
 			this.logger = loggerFactory.CreateLogger<StartupWalletModule>();
 		}
@@ -67,6 +70,7 @@ namespace StratisMinter.Modules
 
 			this.logger.LogInformation("Loading wallet...");
 			this.walletStore.Load();
+			this.walletWorker.ValidateBalnce();
 
 			if (this.walletStore.Wallet.WalletsList.Any())
 			{
