@@ -17,6 +17,7 @@ namespace StratisMinter
 		        FolderLocation = AppContext.BaseDirectory,
 				MaximumNodeConnection = 20,
 				MaxBlocksInMemory = 30000,
+				ConnectedNodesToStake = 1,
 		        TrustedNodes = new List<IPEndPoint> {new IPEndPoint(IPAddress.Parse("127.0.0.1"), Network.Main.DefaultPort) } 
 				//TrustedNodes = new List<IPEndPoint> { new IPEndPoint(IPAddress.Parse("185.64.104.55"), Network.Main.DefaultPort) }
 			};

@@ -76,7 +76,27 @@ namespace StratisMinter.Behaviour
 			var getDataPayload = message.Message.Payload as GetDataPayload;
 			if (this.CanRespondeToGetDataPayload && getDataPayload != null)
 				this.RespondToGetDataPayload(node, getDataPayload);
+
+			var notFoundPayload = message.Message.Payload as NotFoundPayload;
+			if (notFoundPayload != null)
+				this.RespondToNotFoundPayload(node, notFoundPayload);
+
+			var rejectPayload = message.Message.Payload as RejectPayload;
+			if (rejectPayload != null)
+				this.RespondToRejectPayload(node, rejectPayload);
+
 		}
+
+		private void RespondToNotFoundPayload(Node node, NotFoundPayload notFound)
+		{
+			
+		}
+
+		private void RespondToRejectPayload(Node node, RejectPayload rejectPayload)
+		{
+
+		}
+
 
 		private void RespondToGetDataPayload(Node node, GetDataPayload getDataPayload)
 		{
@@ -86,6 +106,11 @@ namespace StratisMinter.Behaviour
 				Payload = getDataPayload,
 				Node = this.AttachedNode
 			});
+
+			RequestCounter requestCounter;
+			foreach (var vector in getDataPayload.Inventory)
+				if (this.blockSyncHub.RequestCount.TryGetValue(vector.Hash, out requestCounter))
+					Interlocked.Increment(ref requestCounter.Count);
 		}
 
 		private void RespondToGetBlocksPayload(Node node, GetBlocksPayload getBlocksPayload)
@@ -100,6 +125,10 @@ namespace StratisMinter.Behaviour
 		private void RespondToBlockPayload(Node node, BlockPayload blockPayload)
 		{
 			this.blockSyncHub.ReceiveBlocks.Add(new HubReceiveBlockItem {Payload = blockPayload, Block = blockPayload.Object, Behaviour = this});
+
+			RequestCounter requestCounter;
+			if (this.blockSyncHub.RequestCount.TryGetValue(blockPayload.Object.GetHash(), out requestCounter))
+				Interlocked.Increment(ref requestCounter.Count);
 		}
 
 		private void RespondToHeadersPayload(Node node, HeadersPayload headersPayload)
@@ -149,6 +178,7 @@ namespace StratisMinter.Behaviour
 				{
 					// add the behaviour to the hub
 					this.blockSyncHub.Behaviours.TryAdd(this, this.AttachedNode);
+					this.AskBlocksIfBehind();
 					break;
 				}
 				case NodeState.Failed:
@@ -160,6 +190,21 @@ namespace StratisMinter.Behaviour
 					this.blockSyncHub.Behaviours.TryRemove(this, out outnode);
 					break;
 				}
+			}
+		}
+
+		private void AskBlocksIfBehind()
+		{
+			if(this.blockSyncHub.Context.DownloadMode)
+				return;
+
+			if (this.AttachedNode.PeerVersion.StartHeight - this.blockSyncHub.ChainIndex.Height > 10)
+			{
+				var message = new GetBlocksPayload()
+				{
+					BlockLocators = this.blockSyncHub.ChainIndex.Tip.GetLocator()
+				};
+				this.AttachedNode.SendMessage(message);
 			}
 		}
 

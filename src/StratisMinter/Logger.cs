@@ -58,10 +58,11 @@ namespace StratisMinter
 	    private readonly BlockMiner blockMiner;
 	    private readonly ChainService chainService;
 	    private readonly NodeConnectionService nodeConnectionService;
+	    private readonly MinerService minerService;
 	    private readonly ILogger logger;
 
 		public Logger(Context context, ILoggerFactory loggerFactory, LogFilter logFilter, WalletStore walletStore, 
-			WalletService walletService, BlockMiner blockMiner, ChainService chainService, NodeConnectionService nodeConnectionService) : base(context)
+			WalletService walletService, BlockMiner blockMiner, ChainService chainService, NodeConnectionService nodeConnectionService, MinerService minerService) : base(context)
 		{
 			this.context = context;
 			this.logFilter = logFilter;
@@ -70,6 +71,7 @@ namespace StratisMinter
 			this.blockMiner = blockMiner;
 			this.chainService = chainService;
 			this.nodeConnectionService = nodeConnectionService;
+			this.minerService = minerService;
 			this.logger = loggerFactory.CreateLogger<Staker>();
 		}
 
@@ -100,9 +102,10 @@ namespace StratisMinter
 			builder.AppendLine($"Tip hash = \t\t {this.context.ChainIndex.Tip.HashBlock}");
 			builder.AppendLine("==== Staking ====");
 			builder.AppendLine($"Balance = \t\t {this.walletService.GetBalance()}");
-			builder.AppendLine($"Pending = \t\t {this.walletService.GetPendingMaturityBalance()}");
-			builder.AppendLine($"Staking = \t\t {this.walletService.GetStakeingBalance()}");
+			builder.AppendLine($"Staking = \t\t {this.walletService.GetStake()}");
 			builder.AppendLine($"Address = \t\t {string.Join(",", this.walletStore.KeyBag.Keys.Select(s => s.PubKey.ToString(this.context.Network)).ToList())}");
+		    builder.AppendLine($"SearchInterval = \t {this.blockMiner.LastCoinStakeSearchInterval}");
+		    builder.AppendLine($"RequestCount = \t\t {string.Join(",", this.minerService.GetRquestCount().Select(s => s.Value))}");
 			builder.AppendLine($"{this.GetStakingInfo()}");
 			if (this.context.DownloadMode)
 		    {
@@ -146,14 +149,14 @@ namespace StratisMinter
 			    nNetworkWeight /= BlockValidator.COIN;
 
 			    return
-				    $"Staking. Your weight is {nWeight} Network weight is {nNetworkWeight}Expected time to earn reward is {text}";
+				    $"Staking... \n Your weight is {nWeight} Network weight is {nNetworkWeight} \n Expected time to earn reward is {text}";
 		    }
 		    else
 		    {
 			    if (this.walletStore.KeyBag.Keys.Empty())
 				    return "Not staking because now keys found";
 
-				if (this.nodeConnectionService.NodesGroup.ConnectedNodes.Empty())
+				if (this.nodeConnectionService.NodesGroup.ConnectedNodes.Count < this.context.Config.ConnectedNodesToStake)
 				    return "Not staking because wallet is offline";
 
 				if (this.context.DownloadMode)

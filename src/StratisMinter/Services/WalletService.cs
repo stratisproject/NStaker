@@ -368,7 +368,7 @@ namespace StratisMinter.Services
 			return money;
 		}
 
-		public Money GetPendingMaturityBalance()
+		public Money GetStake()
 		{
 			var money = new Money(0);
 			foreach (var walletTx in this.walletStore.Wallet.WalletsList.Values)
@@ -377,7 +377,7 @@ namespace StratisMinter.Services
 				if (walletTx.SpentTransactionid == uint256.Zero)
 				{
 					if (walletTx.Transaction.IsCoinStake && this.GetBlocksToMaturity(walletTx) > 0 &&
-					    this.GetDepthInMainChain(walletTx) > 0 && walletTx.SpentTransactionid == uint256.Zero)
+					    this.GetDepthInMainChain(walletTx) > 0)
 					{
 						 money += walletTx.TxOut.Value;
 					}
@@ -458,8 +458,8 @@ namespace StratisMinter.Services
 				//for (int i = 0; i < pcoin.Transaction.Outputs.Count; i++)
 					if (pcoin.SpentTransactionid == uint256.Zero && pcoin.TxOut.Value >= this.minimumInputValue)
 					{
-						// check if the coin sis staking
-						if (!this.minerService.IsStaking(pcoin.Transactionid, pcoin.OutputIndex))
+						// check if the coin is already staking
+						//if (!this.minerService.IsStaking(pcoin.Transactionid, pcoin.OutputIndex))
 							vCoins.Add(new Output {Depth = nDepth, WalletTx = pcoin});
 					}
 			}
@@ -539,6 +539,14 @@ namespace StratisMinter.Services
 			// Select coins with suitable depth
 			if (!SelectCoinsForStaking(nBalance - this.reserveBalance, txNew.Time, out setCoins, out nValueIn))
 				return false;
+
+			// check if coins are already staking
+			// this is different from the c++ implementation
+			// which pushes the new block to the main chain
+			// and removes it when a longer chain is found
+			foreach (var walletTx in setCoins.ToList())
+				if (this.minerService.IsStaking(walletTx.Transactionid, walletTx.OutputIndex))
+					setCoins.Remove(walletTx);
 
 			if (setCoins.Empty())
 				return false;

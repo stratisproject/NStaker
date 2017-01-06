@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using nStratis.Protocol;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 using StratisMinter.Store;
@@ -24,7 +25,7 @@ namespace StratisMinter.Services
 				this.WaitForDownLoadMode();
 
 				// take from the blocking collection 
-				var broadcastItem = this.BlockSyncHub.BroadcastItems.Take(this.Context.CancellationToken);
+				var broadcastItem = this.BlockSyncHub.BroadcastItems.Take(this.Cancellation.Token);
 
 				// if no behaviours are found we wait for behaviours
 				// this is so we don't lose the block
@@ -35,10 +36,13 @@ namespace StratisMinter.Services
 				// queue the block, in that case we don't broadcast back. 
 				foreach (var behaviour in this.BlockSyncHub.Behaviours)
 				{
-					// node exists and is equal to current don't broadcast to it
-					if(broadcastItem.Node?.Equals(behaviour.Value) ?? false)
+					if (!(behaviour.Value.State == NodeState.HandShaked || behaviour.Value.State == NodeState.Connected))
 						continue;
-					
+
+					// node exists and is equal to current don't broadcast to it
+					if (broadcastItem.Node?.Equals(behaviour.Value) ?? false)
+						continue;
+
 					behaviour.Value.SendMessage(broadcastItem.Payload, this.Cancellation.Token);
 				}
 			}

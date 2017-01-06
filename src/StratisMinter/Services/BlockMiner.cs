@@ -23,16 +23,33 @@ namespace StratisMinter.Services
 
 	public class MinerService : WorkItem
 	{
+		private readonly BlockSyncHub blockSyncHub;
 		public ConcurrentDictionary<ChainedBlock, Block> MinedBlocks;
 
-		public MinerService(Context context) : base(context)
+		public MinerService(Context context, BlockSyncHub blockSyncHub) : base(context)
 		{
+			this.blockSyncHub = blockSyncHub;
 			this.MinedBlocks = new ConcurrentDictionary<ChainedBlock, Block>();
+		}
+
+		public Dictionary<ChainedBlock, int> GetRquestCount()
+		{
+			return this.GetMiningChainedBlocks().ToDictionary(a => a, m =>
+			{
+				RequestCounter ret;
+				this.blockSyncHub.RequestCount.TryGetValue(m.HashBlock, out ret);
+				return ret?.Count ?? 0;
+			});
 		}
 
 		public IEnumerable<Block> GetMiningBlocks()
 		{
 			return this.MinedBlocks.Where(k => k.Key.Height > this.Context.ChainIndex.Height).Select(s => s.Value);
+		}
+
+		public IEnumerable<ChainedBlock> GetMiningChainedBlocks()
+		{
+			return this.MinedBlocks.Where(k => k.Key.Height > this.Context.ChainIndex.Height).Select(s => s.Key);
 		}
 
 		public bool IsStaking(uint256 trxid, int outIndex)
@@ -85,12 +102,18 @@ namespace StratisMinter.Services
 		{
 			while (this.NotCanceled())
 			{
+				if (this.Context.DownloadMode)
+					this.LastCoinStakeSearchInterval = 0;
+
 				// this method blocks
 				this.WaitForDownLoadMode();
 
 				// we need at least 3 connect5ed nodes
 				while (this.nodeConnectionService.NodesGroup.ConnectedNodes.Count < this.Context.Config.ConnectedNodesToStake)
+				{
+					this.LastCoinStakeSearchInterval = 0;
 					this.Cancellation.Token.WaitHandle.WaitOne(TimeSpan.FromMinutes(1));
+				}
 
 				long fee;
 				var pindexPrev = this.chainIndex.Tip;
@@ -114,8 +137,6 @@ namespace StratisMinter.Services
 
 		private bool SignBlock(Block block, ChainedBlock pindexBest, long fees)
 		{
-			var bestHeight = pindexBest.Height;
-
 			// if we are trying to sign
 			//    something except proof-of-stake block template
 			if (!block.Transactions[0].Outputs[0].IsEmpty)
@@ -132,13 +153,18 @@ namespace StratisMinter.Services
 			Transaction txCoinStake = new Transaction();
 
 			//if (BlockValidator.IsProtocolV2(bestHeight + 1)) // we are never in V2
-			txCoinStake.Time += BlockValidator.STAKE_TIMESTAMP_MASK;
+			int tt = (int)txCoinStake.Time;
+			tt &= ~BlockValidator.STAKE_TIMESTAMP_MASK;
+			txCoinStake.Time = (uint)tt;
 
 			long searchTime = txCoinStake.Time; // search to current time
 
-			if (searchTime > lastCoinStakeSearchTime)
+			//Console.WriteLine($"searchInterval = {searchTime - lastCoinStakeSearchTime} searchTime = {searchTime} lastCoinStakeSearchTime = {lastCoinStakeSearchTime}");
+
+			//if (searchTime > lastCoinStakeSearchTime)
+			if (DateTime.UtcNow.Second % 16 == 0) // every 16 sedons
 			{
-				long searchInterval = searchTime - lastCoinStakeSearchTime;
+				long searchInterval = 16;//searchTime - lastCoinStakeSearchTime;
 				if (this.walletService.CreateCoinStake(pindexBest, block.Header.Bits, searchInterval, fees, ref txCoinStake, ref key))
 				{
 					if (txCoinStake.Time >= BlockValidator.GetPastTimeLimit(pindexBest) + 1)
@@ -163,7 +189,7 @@ namespace StratisMinter.Services
 						return true;
 					}
 				}
-				this.LastCoinStakeSearchInterval = searchTime - lastCoinStakeSearchTime;
+				this.LastCoinStakeSearchInterval = searchInterval;//searchTime - lastCoinStakeSearchTime;
 				lastCoinStakeSearchTime = searchTime;
 			}
 

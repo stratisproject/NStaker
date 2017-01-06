@@ -35,8 +35,11 @@ namespace StratisMinter.Services
 				// only processes block types
 				foreach (var source in broadcastItem.Payload.Inventory.Where(inv => inv.Type == InventoryType.MSG_BLOCK))
 				{
-					var block = this.chainIndex.GetFullBlock(source.Hash) ??
-					            this.minerService.MinedBlocks.Where(k => k.Key.HashBlock == source.Hash).Select(s => s.Value).FirstOrDefault();
+					var block = this.chainIndex.GetFullBlock(source.Hash);
+
+					// check if the mined blocs have been requested
+					if (block == null)
+						block =this.minerService.MinedBlocks.Where(k => k.Key.HashBlock == source.Hash).Select(s => s.Value).FirstOrDefault();
 
 					if (block != null)
 					{

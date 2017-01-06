@@ -87,7 +87,7 @@ namespace StratisMinter.Behaviour
 			});
 
 			foreach (var inv in invs)
-				this.BroadcastItems.TryAdd(new HubBroadcastItem {Payload = inv});
+				this.BroadcastItems.TryAdd(new HubBroadcastItem {Payload = new InvPayload(inv)});
 		}
 	}
 }
