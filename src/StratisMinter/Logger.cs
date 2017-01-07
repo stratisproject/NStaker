@@ -154,7 +154,7 @@ namespace StratisMinter
 		    else
 		    {
 			    if (this.walletStore.KeyBag.Keys.Empty())
-				    return "Not staking because now keys found";
+				    return "Not staking because no keys found";
 
 				if (this.nodeConnectionService.NodesGroup.ConnectedNodes.Count < this.context.Config.ConnectedNodesToStake)
 				    return "Not staking because wallet is offline";
