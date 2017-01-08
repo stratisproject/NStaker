@@ -242,8 +242,30 @@ namespace StratisMinter.Services
 			}
 
 			// Preliminary checks
-			if (!block.Check())
+			if (!BlockValidator.CheckBlock(block))
 				return false; //error("ProcessBlock() : CheckBlock FAILED");
+
+			var prevChainedBlock = this.chainIndex.GetAnyTip(block.Header.HashPrevBlock);
+			if (prevChainedBlock == null)
+				throw new InvalidBlockException();
+
+			chainedBlock = new ChainedBlock(block.Header, blockHash, prevChainedBlock);
+
+			if (!block.Header.PosParameters.IsSet())
+				chainedBlock.Header.PosParameters = block.SetPosParams();
+
+			// ensure the previous chainedBlock has
+			// the POS parameters set if not load its 
+			// block and set the pos params
+			if (!prevChainedBlock.Header.PosParameters.IsSet())
+			{
+				var prevBlock = this.chainIndex.GetFullBlock(prevChainedBlock.HashBlock);
+				prevChainedBlock.Header.PosParameters = prevBlock.Header.PosParameters;
+			}
+
+			// do some checks
+			if (!chainedBlock.Validate(this.Context.Network))
+				return false;
 
 			// todo: implement this checks
 
@@ -259,9 +281,9 @@ namespace StratisMinter.Services
 			//if (GetBlockTime() > FutureDrift((int64_t)vtx[0].nTime, nHeight))
 			//	return DoS(50, error("AcceptBlock() : coinbase timestamp is too early"));
 
-			//// Check coinstake timestamp
-			//if (IsProofOfStake() && !CheckCoinStakeTimestamp(nHeight, GetBlockTime(), (int64_t)vtx[1].nTime))
-			//	return DoS(50, error("AcceptBlock() : coinstake timestamp violation nTimeBlock=%d nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
+			// Check coinstake timestamp
+			if (block.IsProofOfStake() && !BlockValidator.CheckCoinStakeTimestamp(chainedBlock.Height, block.Header.Time, block.Transactions[1].Time))
+				return false; //DoS(50, error("AcceptBlock() : coinstake timestamp violation nTimeBlock=%d nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
 
 			//// Check proof-of-work or proof-of-stake
 			//if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()))
@@ -280,27 +302,7 @@ namespace StratisMinter.Services
 			//if (!Checkpoints::CheckHardened(nHeight, hash))
 			//	return DoS(100, error("AcceptBlock() : rejected by hardened checkpoint lock-in at %d", nHeight));
 
-			var prevChainedBlock = this.chainIndex.GetAnyTip(block.Header.HashPrevBlock);
-			if(prevChainedBlock == null)
-				throw new InvalidBlockException();
-
-			chainedBlock = new ChainedBlock(block.Header, blockHash, prevChainedBlock);
-
-			if (!block.Header.PosParameters.IsSet())
-				chainedBlock.Header.PosParameters = block.SetPosParams();
-
-			// ensure the previous chainedBlock has
-			// the POS parameters set if not load its 
-			// block and set the pos params
-			if (prevChainedBlock != null && !prevChainedBlock.Header.PosParameters.IsSet())
-			{
-				var prevBlock = this.chainIndex.GetFullBlock(prevChainedBlock.HashBlock);
-				prevChainedBlock.Header.PosParameters = prevBlock.Header.PosParameters;
-			}
-
-			// do some checks
-			if (!chainedBlock.Validate(this.Context.Network))
-				return false;
+		
 
 			if (!BlockValidator.CheckAndComputeStake(this.chainIndex, this.chainIndex, this.chainIndex, this.chainIndex, chainedBlock, block))
 				return false;

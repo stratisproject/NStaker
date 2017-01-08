@@ -554,6 +554,15 @@ namespace StratisMinter
 			return true;
 		}
 
+		// Check whether the coinstake timestamp meets protocol
+		public static bool CheckCoinStakeTimestamp(int nHeight, long nTimeBlock, long nTimeTx)
+		{
+			if (IsProtocolV2(nHeight))
+				return (nTimeBlock == nTimeTx) && ((nTimeTx & STAKE_TIMESTAMP_MASK) == 0);
+			else
+				return (nTimeBlock == nTimeTx);
+		}
+
 		public static bool CheckKernel(IBlockRepository blockStore, ITransactionRepository trasnactionStore,
 			IBlockTransactionMapStore mapStore,
 			ChainedBlock pindexPrev, uint nBits, long nTime, OutPoint prevout, ref long pBlockTime)

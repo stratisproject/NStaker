@@ -66,24 +66,22 @@ namespace StratisMinter.Store
 		{
 			// assume for now this is only called form one thread
 
-			// assume the tip is the longest
-			if (chainedBlock.Previous.HashBlock == this.Tip.HashBlock)
-			{
-				this.SetTip(chainedBlock);
-				return true;
-			}
+			var tipChanged = false;
 
-			//todo: use block trust instead of height
 			// check and set the tip, else push to pending blocks
-			if (chainedBlock.Height > this.Tip.Height)
+			if (chainedBlock.ChainWork > this.Tip.ChainWork)
 			{
 				// set new tip
 				var oldTip = this.SetTip(chainedBlock);
 
-				// add the old tip to alt tips just in case 
-				// it becomes part of a longer chain later
-				this.AlternateTips.TryAdd(oldTip.HashBlock, oldTip);
-				return true;
+				if (chainedBlock.Previous.HashBlock != oldTip.HashBlock)
+				{
+					// a different chain with more trust is found
+					// add the old chain to alt tips.
+					this.AlternateTips.TryAdd(oldTip.HashBlock, oldTip);
+				}
+
+				tipChanged = true;
 			}
 			else
 			{
@@ -94,10 +92,10 @@ namespace StratisMinter.Store
 			
 			// remove old tips
 			foreach (var alternateTip in this.AlternateTips.Values)
-				if (this.Height - alternateTip.Height > 2000)
+				if (this.Height - alternateTip.Height > 200)
 					this.AlternateTips.Remove(alternateTip.HashBlock);
 			
-			return false;
+			return tipChanged;
 		}
 
 		public void AddToBlockStore(Block block, ChainedBlock chainedBlock)

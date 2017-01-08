@@ -80,6 +80,7 @@ namespace StratisMinter.Services
 
 		private readonly int minerSleep;
 		public long LastCoinStakeSearchInterval;
+		public long LastCoinStakeSearchTime;
 
 		public BlockMiner(Context context, NodeConnectionService nodeConnectionService,
 			BlockSyncHub blockSyncHub, ChainService chainSyncService, WalletService walletService, WalletWorker walletWorker, 
@@ -95,7 +96,7 @@ namespace StratisMinter.Services
 			this.BlockSyncHub = blockSyncHub;
 			this.minerSleep = 500; // GetArg("-minersleep", 500);
 			this.LastCoinStakeSearchInterval = 0;
-
+			this.LastCoinStakeSearchTime = DateTime.UtcNow.ToUnixTimestamp();
 		}
 
 		protected override void Work()
@@ -147,7 +148,7 @@ namespace StratisMinter.Services
 			if (block.IsProofOfStake())
 				return true;
 
-			long lastCoinStakeSearchTime = DateTime.UtcNow.ToUnixTimestamp();// GetAdjustedTime(); // startup timestamp
+			//this.LastCoinStakeSearchTime = DateTime.UtcNow.ToUnixTimestamp();// GetAdjustedTime(); // startup timestamp
 
 			Key key = null;
 			Transaction txCoinStake = new Transaction();
@@ -159,12 +160,12 @@ namespace StratisMinter.Services
 
 			long searchTime = txCoinStake.Time; // search to current time
 
-			//Console.WriteLine($"searchInterval = {searchTime - lastCoinStakeSearchTime} searchTime = {searchTime} lastCoinStakeSearchTime = {lastCoinStakeSearchTime}");
+			//Console.WriteLine($"mask = {txCoinStake.Time & BlockValidator.STAKE_TIMESTAMP_MASK} searchInterval = {searchTime - this.LastCoinStakeSearchTime} searchTime = {searchTime} lastCoinStakeSearchTime = {this.LastCoinStakeSearchTime}");
 
-			//if (searchTime > lastCoinStakeSearchTime)
-			if (DateTime.UtcNow.Second % 16 == 0) // every 16 sedons
+			if (searchTime > this.LastCoinStakeSearchTime)
+			//if (DateTime.UtcNow.Second % 16 == 0) // every 16 sedons
 			{
-				long searchInterval = 16;//searchTime - lastCoinStakeSearchTime;
+				long searchInterval = searchTime - this.LastCoinStakeSearchTime;
 				if (this.walletService.CreateCoinStake(pindexBest, block.Header.Bits, searchInterval, fees, ref txCoinStake, ref key))
 				{
 					if (txCoinStake.Time >= BlockValidator.GetPastTimeLimit(pindexBest) + 1)
@@ -189,8 +190,8 @@ namespace StratisMinter.Services
 						return true;
 					}
 				}
-				this.LastCoinStakeSearchInterval = searchInterval;//searchTime - lastCoinStakeSearchTime;
-				lastCoinStakeSearchTime = searchTime;
+				this.LastCoinStakeSearchInterval = searchTime - this.LastCoinStakeSearchTime;
+				this.LastCoinStakeSearchTime = searchTime;
 			}
 
 			return false;
@@ -218,28 +219,31 @@ namespace StratisMinter.Services
 			if (block.Header.HashPrevBlock != this.chainIndex.Tip.HashBlock)
 				return; // error("CheckStake() : generated block is stale");
 
-			// Track how many getdata requests this block gets
-			if (!this.BlockSyncHub.RequestCount.TryAdd(hashBlock, new RequestCounter()))
-				throw new MinedBlockException();
-
 			// Process this block the same as if we had received it from another node
 			//this.BlockSyncHub.ReceiveBlocks.TryAdd(new HubReceiveBlockItem {Block = block});
 
 			ChainedBlock chainedBlock;
 			if (this.blockReceiver.ProcessBlock(null, block, out chainedBlock))
 			{
-				// add to alt tips
-				if(!this.minerService.MinedBlocks.TryAdd(chainedBlock, block))
-					throw new MinedBlockException();
+				if (chainedBlock.ChainWork > this.chainIndex.Tip.ChainWork)
+				{
+					// Track how many getdata requests this block gets
+					if (!this.BlockSyncHub.RequestCount.TryAdd(hashBlock, new RequestCounter()))
+						throw new MinedBlockException();
 
-				// add to wallet
-				//this.walletWorker.AddBlock(block);
+					// add to alt tips
+					if (!this.minerService.MinedBlocks.TryAdd(chainedBlock, block))
+						throw new MinedBlockException();
 
-				// let the wallet processes the transaction
-				//this.Cancellation.Token.WaitHandle.WaitOne(1000);
+					// add to wallet
+					//this.walletWorker.AddBlock(block);
 
-				// broadcast it
-				this.BlockSyncHub.BroadcastBlockInventory(new[] { hashBlock });
+					// let the wallet processes the transaction
+					//this.Cancellation.Token.WaitHandle.WaitOne(1000);
+
+					// broadcast it
+					this.BlockSyncHub.BroadcastBlockInventory(new[] {hashBlock});
+				}
 			}
 		}
 

@@ -589,7 +589,8 @@ namespace StratisMinter.Services
 							break; // only support pay to public key and pay to address
 						}
 
-						var scriptPubKeyOut = scriptPubKeyKernel;
+						// create a pubkey script form the current script
+						var scriptPubKeyOut = PayToPubkeyTemplate.Instance.GenerateScriptPubKey(key.PubKey); //scriptPubKeyKernel;
 
 						txNew.Time -= n;
 						txNew.AddInput(new TxIn(prevoutStake));
