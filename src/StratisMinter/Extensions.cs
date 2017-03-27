@@ -25,7 +25,10 @@ namespace StratisMinter
 		    DoubleLock.Lock(ref obj, condition, action);
 	    }
 
-	    
+	    public static bool Empty<T>(this IEnumerable<T> items)
+	    {
+		    return !items.Any();
+	    }
     }
 
 	public class DoubleLock

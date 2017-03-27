@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using nStratis;
+using NBitcoin;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 using StratisMinter.Store;

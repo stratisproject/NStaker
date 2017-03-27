@@ -1,4 +1,4 @@
-﻿using nStratis.Protocol.Behaviors;
+﻿using NBitcoin.Protocol.Behaviors;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 using StratisMinter.Services;

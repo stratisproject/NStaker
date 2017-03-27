@@ -2,9 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics;
-using nStratis;
-using nStratis.Crypto;
+using NBitcoin;
+using NBitcoin.BouncyCastle.Math;
+using NBitcoin.Crypto;
 using StratisMinter.Services;
 
 namespace StratisMinter
@@ -76,7 +76,7 @@ namespace StratisMinter
 			for (int i = 0; i < MedianTimeSpan && pindex != null; i++, pindex = pindex.Previous)
 				soretedList.Add(pindex.Header.Time);
 
-			return (soretedList.First() - soretedList.Last())/2;
+			return (soretedList.First() - soretedList.Last()) / 2;
 		}
 
 		// find last block index up to index
@@ -131,10 +131,11 @@ namespace StratisMinter
 			var target = pindexPrev.Header.Bits.ToBigInteger();
 
 			int interval = targetTimespan / targetSpacing;
-			target *= ((interval - 1) * targetSpacing + actualSpacing + actualSpacing);
-			target /= ((interval + 1) * targetSpacing);
+			target = target.Multiply(BigInteger.ValueOf(((interval - 1) * targetSpacing + actualSpacing + actualSpacing)));
+			target = target.Divide(BigInteger.ValueOf(((interval + 1) * targetSpacing)));
 
-			if (target <= 0 || target > targetLimit)
+			if (target.CompareTo(BigInteger.Zero) <= 0 || target.CompareTo(targetLimit) > 1)
+				//if (target <= 0 || target > targetLimit)
 				target = targetLimit;
 
 			return new Target(target);
@@ -204,7 +205,7 @@ namespace StratisMinter
 			// that can be verified before saving an orphan block.
 
 			// Size limits
-			if (block.Transactions.Empty() || block.GetSerializedSize() > MAX_BLOCK_SIZE)
+			if (!block.Transactions.Any() || block.GetSerializedSize() > MAX_BLOCK_SIZE)
 				return false; // DoS(100, error("CheckBlock() : size limits failed"));
 
 			// Check proof of work matches claimed amount
@@ -484,8 +485,8 @@ namespace StratisMinter
 
 			// Weighted target
 			var nValueIn = txPrev.Outputs[prevout.N].Value.Satoshi;
-			var bnWeight = new BigInteger(nValueIn);
-			bnTarget *= bnWeight;
+			var bnWeight = BigInteger.ValueOf(nValueIn);
+			bnTarget = bnTarget.Multiply(bnWeight);
 
 			// todo: investigate this issue, is the convertion to uint256 similar to the c++ implementation
 			//targetProofOfStake = Target.ToUInt256(bnTarget);
@@ -532,8 +533,8 @@ namespace StratisMinter
 			}
 
 			// Now check if proof-of-stake hash meets target protocol
-			var hashProofOfStakeTarget = new BigInteger(hashProofOfStake.ToBytes());
-			if (hashProofOfStakeTarget > bnTarget)
+			var hashProofOfStakeTarget = new BigInteger(hashProofOfStake.ToBytes(false));
+			if (hashProofOfStakeTarget.CompareTo(bnTarget) > 0)
 				return false;
 
 
@@ -845,11 +846,11 @@ namespace StratisMinter
 		// guaranteed to be in main chain by sync-checkpoint. This rule is
 		// introduced to help nodes establish a consistent view of the coin
 		// age (trust score) of competing branches.
-		public static bool GetCoinAge(IBlockRepository blockStore, ITransactionRepository trasnactionStore, IBlockTransactionMapStore mapStore, 
+		public static bool GetCoinAge(IBlockRepository blockStore, ITransactionRepository trasnactionStore, IBlockTransactionMapStore mapStore,
 			Transaction trx, ChainedBlock pindexPrev, out ulong nCoinAge)
 		{
 
-			BigInteger bnCentSecond = 0;  // coin age in the unit of cent-seconds
+			BigInteger bnCentSecond = BigInteger.Zero;  // coin age in the unit of cent-seconds
 			nCoinAge = 0;
 
 			if (trx.IsCoinBase)
@@ -859,7 +860,7 @@ namespace StratisMinter
 			{
 				// First try finding the previous transaction in database
 				Transaction txPrev = trasnactionStore.Get(txin.PrevOut.Hash);
-				if(txPrev == null)
+				if (txPrev == null)
 					continue;  // previous transaction not in main chain
 				if (trx.Time < txPrev.Time)
 					return false;  // Transaction timestamp violation
@@ -884,13 +885,16 @@ namespace StratisMinter
 				}
 
 				long nValueIn = txPrev.Outputs[txin.PrevOut.N].Value;
-				bnCentSecond += new BigInteger(nValueIn) * (trx.Time - txPrev.Time) / CENT;
+				var multiplier = BigInteger.ValueOf((trx.Time - txPrev.Time) / CENT);
+				bnCentSecond = bnCentSecond.Add(BigInteger.ValueOf(nValueIn).Multiply(multiplier));
+				//bnCentSecond += new BigInteger(nValueIn) * (trx.Time - txPrev.Time) / CENT;
 
 
 				//LogPrint("coinage", "coin age nValueIn=%d nTimeDiff=%d bnCentSecond=%s\n", nValueIn, nTime - txPrev.nTime, bnCentSecond.ToString());
 			}
 
-			BigInteger bnCoinDay = bnCentSecond * CENT / COIN / (24 * 60 * 60);
+			BigInteger bnCoinDay = bnCentSecond.Multiply(BigInteger.ValueOf(CENT / COIN / (24 * 60 * 60)));
+			//BigInteger bnCoinDay = bnCentSecond * CENT / COIN / (24 * 60 * 60);
 
 			//LogPrint("coinage", "coin age bnCoinDay=%s\n", bnCoinDay.ToString());
 			nCoinAge = new Target(bnCoinDay).ToCompact();

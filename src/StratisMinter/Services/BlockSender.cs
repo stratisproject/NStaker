@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 using Microsoft.Extensions.Logging;
-using nStratis.Protocol;
+using NBitcoin.Protocol;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 using StratisMinter.Store;

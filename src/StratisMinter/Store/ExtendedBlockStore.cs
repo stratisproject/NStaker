@@ -5,8 +5,8 @@ using System.Linq;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
-using nStratis;
-using nStratis.BitcoinCore;
+using NBitcoin;
+using NBitcoin.BitcoinCore;
 
 namespace StratisMinter.Store
 {

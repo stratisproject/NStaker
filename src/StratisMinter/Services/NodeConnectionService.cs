@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Linq;
 using Microsoft.Extensions.Logging;
-using nStratis;
-using nStratis.Protocol;
-using nStratis.Protocol.Behaviors;
+using NBitcoin;
+using NBitcoin.Protocol;
+using NBitcoin.Protocol.Behaviors;
 using StratisMinter.Base;
 using StratisMinter.Behaviour;
 
@@ -99,9 +99,9 @@ namespace StratisMinter.Services
 
 			foreach (var endPoint in this.Context.Config.TrustedNodes)
 			{
-				var node = this.NodesGroup.TryConnectNode(endPoint);
-				if (node != null)
-					return node;
+				//var node = this.NodesGroup.TryConnectNode(endPoint);
+				//if (node != null)
+				//	return node;
 			}
 
 			throw new NoConnectedNodesException("no trusted nodes");

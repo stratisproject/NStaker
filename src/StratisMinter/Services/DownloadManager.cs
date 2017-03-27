@@ -5,8 +5,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using nStratis;
-using nStratis.Protocol;
+using NBitcoin;
+using NBitcoin.Protocol;
 using StratisMinter.Base;
 using StratisMinter.Store;
 

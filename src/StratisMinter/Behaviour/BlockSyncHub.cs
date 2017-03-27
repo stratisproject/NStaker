@@ -4,9 +4,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using nStratis;
-using nStratis.Protocol;
-using nStratis.Protocol.Payloads;
+using NBitcoin;
+using NBitcoin.Protocol;
+using NBitcoin.Protocol.Payloads;
 using StratisMinter.Store;
 
 namespace StratisMinter.Behaviour

@@ -1,8 +1,8 @@
 ﻿using System.IO;
 using Microsoft.Extensions.Logging;
-using nStratis;
-using nStratis.Protocol;
-using nStratis.Protocol.Behaviors;
+using NBitcoin;
+using NBitcoin.Protocol;
+using NBitcoin.Protocol.Behaviors;
 using StratisMinter.Base;
 
 namespace StratisMinter.Modules

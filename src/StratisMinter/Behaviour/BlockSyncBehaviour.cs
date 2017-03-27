@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.Logging;
-using nStratis;
-using nStratis.Protocol;
-using nStratis.Protocol.Behaviors;
-using nStratis.Protocol.Payloads;
+using NBitcoin;
+using NBitcoin.Protocol;
+using NBitcoin.Protocol.Behaviors;
+using NBitcoin.Protocol.Payloads;
 using StratisMinter.Base;
 using StratisMinter.Services;
 using System.Linq;

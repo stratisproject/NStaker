@@ -1,6 +1,6 @@
 ﻿using System.IO;
 using Microsoft.Extensions.Logging;
-using nStratis;
+using NBitcoin;
 using StratisMinter.Base;
 using StratisMinter.Services;
 using StratisMinter.Store;
